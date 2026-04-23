@@ -22,6 +22,7 @@ from datetime import date, datetime, timezone
 from pathlib import Path
 
 import structlog
+from pydantic import BaseModel, ValidationError, field_validator
 from sanic import Blueprint, Request
 from sanic.exceptions import BadRequest, NotFound
 from sanic.response import HTTPResponse, json as sanic_json
@@ -51,6 +52,58 @@ from src.services.security import protected, role_required
 logger = structlog.get_logger(__name__)
 
 admin_bp = Blueprint("admin", url_prefix="/api/admin")
+
+
+# =============================================================================
+# Pydantic Şemaları
+# =============================================================================
+
+class AdminUpdateUserRequest(BaseModel):
+    name: str | None = None
+    surname: str | None = None
+    age: int | None = None
+    phone_number: str | None = None
+    birthday: str | None = None
+
+    @field_validator("name", "surname")
+    @classmethod
+    def strip_and_check_empty(cls, v: str | None) -> str | None:
+        if v is not None:
+            v = v.strip()
+            if not v:
+                raise ValueError("Bu alan boş olamaz.")
+            if len(v) > 100:
+                raise ValueError("Bu alan en fazla 100 karakter olabilir.")
+        return v
+
+    @field_validator("age")
+    @classmethod
+    def validate_age(cls, v: int | None) -> int | None:
+        if v is not None and (v < 13 or v > 120):
+            raise ValueError("Yaş 13 ile 120 arasında olmalıdır.")
+        return v
+
+    @field_validator("phone_number")
+    @classmethod
+    def validate_phone(cls, v: str | None) -> str | None:
+        if v is None:
+            return v
+        v = v.strip()
+        if not v.startswith("+") or not v[1:].isdigit():
+            raise ValueError("Telefon numarası uluslararası formatta olmalıdır. Örn: +905551234567")
+        if len(v) < 10 or len(v) > 16:
+            raise ValueError("Telefon numarası 10-16 karakter arasında olmalıdır.")
+        return v
+
+    @field_validator("birthday")
+    @classmethod
+    def validate_birthday(cls, v: str | None) -> str | None:
+        if v is not None:
+            try:
+                date.fromisoformat(v)
+            except ValueError:
+                raise ValueError("Doğum tarihi YYYY-MM-DD formatında olmalıdır.")
+        return v
 
 
 # =============================================================================
@@ -599,4 +652,215 @@ async def update_expense(
                 "updated_fields": new_values,
             },
             status=200,
+        )
+
+
+# =============================================================================
+# ENDPOINT 9: PUT /api/admin/users/<user_id>
+# =============================================================================
+
+@admin_bp.put("/users/<user_id:int>")
+@protected
+@role_required(GlobalRole.ADMIN)
+async def admin_update_user(request: Request, user_id: int) -> HTTPResponse:
+    """
+    Adminin, kullanıcının profil bilgilerini doğrudan güncellemesi.
+    """
+    admin_id: int = int(request.ctx.user["sub"])
+    body = request.json or {}
+
+    if not body:
+        raise BadRequest("Güncellenecek alanlar (JSON formatında) gereklidir.")
+
+    try:
+        data = AdminUpdateUserRequest.model_validate(body)
+    except ValidationError as exc:
+        errors = [{"field": e["loc"][0] if e["loc"] else "unknown", "message": e["msg"]} for e in exc.errors()]
+        raise BadRequest(f"Validasyon hatası: {errors}")
+
+    async with get_session() as session:
+        stmt = select(User).where(User.id == user_id, User.deleted_at.is_(None))
+        user = await session.scalar(stmt)
+
+        if not user:
+            raise NotFound("Kullanıcı bulunamadı veya silinmiş.")
+
+        old_values = {
+            "name": user.name,
+            "surname": user.surname,
+            "age": user.age,
+            "phone_number": user.phone_number,
+            "birthday": user.birthday.isoformat() if user.birthday else None,
+        }
+        new_values = {}
+
+        if data.name is not None:
+            user.name = data.name
+            new_values["name"] = data.name
+        if data.surname is not None:
+            user.surname = data.surname
+            new_values["surname"] = data.surname
+        if data.age is not None:
+            user.age = data.age
+            new_values["age"] = data.age
+        if data.phone_number is not None:
+            user.phone_number = data.phone_number
+            new_values["phone_number"] = data.phone_number
+        if data.birthday is not None:
+            user.birthday = date.fromisoformat(data.birthday)
+            new_values["birthday"] = data.birthday
+
+        if not new_values:
+            return sanic_json({"message": "Değişiklik yapılmadı."}, status=200)
+
+        # Audit Log
+        await _create_audit_log(
+            session,
+            admin_id=admin_id,
+            process="ADMIN_UPDATE_USER",
+            content={
+                "target_user_id": user_id,
+                "old_values": old_values,
+                "new_values": new_values,
+            },
+        )
+
+        logger.info(
+            "admin.user_updated",
+            admin_id=admin_id,
+            target_user=user_id,
+            updated_fields=list(new_values.keys())
+        )
+
+        return sanic_json(
+            {
+                "message": "Kullanıcı başarıyla güncellendi.",
+                "updated_fields": new_values,
+            },
+            status=200
+        )
+
+
+# =============================================================================
+# ENDPOINT 10: POST /api/admin/groups/<group_id>/members/<target_user_id>
+# =============================================================================
+
+@admin_bp.post("/groups/<group_id:int>/members/<target_user_id:int>")
+@protected
+@role_required(GlobalRole.ADMIN)
+async def admin_force_add_member(request: Request, group_id: int, target_user_id: int) -> HTTPResponse:
+    """
+    Adminin bir kullanıcıyı istediği bir gruba zorla eklemesi veya 
+    bekleyen isteğini zorla onaylaması.
+    role=USER, is_approved=True olarak kaydedilir.
+    """
+    admin_id: int = int(request.ctx.user["sub"])
+
+    from src.models import GroupMemberRole # Import here to avoid circular dependencies if any, or it's already imported? Wait, GroupMemberRole is not imported in admin.py. I will add it to the import block above or use it as imported. Ah, let's just import it locally.
+    from src.models import GroupMemberRole
+
+    async with get_session() as session:
+        # Grup var mı?
+        stmt_group = select(Group).where(Group.id == group_id)
+        group = await session.scalar(stmt_group)
+        if not group:
+            raise NotFound("Grup bulunamadı.")
+
+        # Kullanıcı aktif ve mevcut mu?
+        stmt_user = select(User).where(User.id == target_user_id, User.deleted_at.is_(None))
+        user = await session.scalar(stmt_user)
+        if not user or not user.is_active:
+            raise NotFound("Aktif bir hedef kullanıcı bulunamadı.")
+
+        from src.models import GroupMember
+        stmt_member = select(GroupMember).where(
+            GroupMember.group_id == group_id,
+            GroupMember.user_id == target_user_id
+        )
+        membership = await session.scalar(stmt_member)
+
+        if membership:
+            if membership.is_approved:
+                raise BadRequest("Bu kullanıcı zaten grubun onaylı bir üyesi.")
+            else:
+                membership.is_approved = True
+        else:
+            new_membership = GroupMember(
+                user_id=target_user_id,
+                group_id=group_id,
+                role=GroupMemberRole.USER,
+                is_approved=True
+            )
+            session.add(new_membership)
+
+        await session.flush()
+
+        # Audit Log
+        await _create_audit_log(
+            session,
+            admin_id=admin_id,
+            process="ADMIN_FORCE_ADD_MEMBER",
+            content={
+                "group_id": group_id,
+                "target_user_id": target_user_id
+            },
+        )
+
+        logger.info(
+            "admin.force_add_member",
+            admin_id=admin_id,
+            group_id=group_id,
+            target_user=target_user_id
+        )
+
+        return sanic_json(
+            {"message": f"Kullanıcı (id={target_user_id}) gruba zorla eklendi/onaylandı."},
+            status=201
+        )
+
+
+# =============================================================================
+# ENDPOINT 11: DELETE /api/admin/groups/<group_id>
+# =============================================================================
+
+@admin_bp.delete("/groups/<group_id:int>")
+@protected
+@role_required(GlobalRole.ADMIN)
+async def admin_delete_group(request: Request, group_id: int) -> HTTPResponse:
+    """
+    Adminin bir grubu veritabanından kalıcı olarak silmesi (Cascade delete).
+    """
+    admin_id: int = int(request.ctx.user["sub"])
+
+    async with get_session() as session:
+        stmt = select(Group).where(Group.id == group_id)
+        group = await session.scalar(stmt)
+
+        if not group:
+            raise NotFound("Grup bulunamadı.")
+
+        group_name = group.name
+
+        # Cascade ile sil
+        await session.delete(group)
+        await session.flush()
+
+        # Audit Log
+        await _create_audit_log(
+            session,
+            admin_id=admin_id,
+            process="ADMIN_DELETE_GROUP",
+            content={"group_id": group_id, "group_name": group_name},
+        )
+
+        logger.info(
+            "admin.group_deleted",
+            admin_id=admin_id,
+            group_id=group_id,
+            group_name=group_name
+        )
+
+        return sanic_json(
+            {"message": f"Grup '{group_name}' başarıyla silindi."},
+            status=200
         )
