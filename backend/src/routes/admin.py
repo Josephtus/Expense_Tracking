@@ -18,7 +18,8 @@ Kurallar:
 """
 
 import json
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
+from pathlib import Path
 
 import structlog
 from sanic import Blueprint, Request
@@ -32,10 +33,18 @@ from src.models import (
     Expense,
     GlobalRole,
     Group,
+    GroupMember,
     Message,
     Report,
     ReportStatus,
     User,
+)
+from src.routes.expenses import (
+    ALLOWED_MIME_TYPES,
+    EXTENSION_TO_MIME,
+    MAX_RECEIPT_SIZE,
+    _detect_mime,
+    _save_receipt,
 )
 from src.services.security import protected, role_required
 
@@ -365,6 +374,229 @@ async def list_audit_logs(request: Request) -> HTTPResponse:
                 "limit": limit,
                 "count": len(logs),
                 "data": [_build_audit_log_response(log) for log in logs],
+            },
+            status=200,
+        )
+
+
+# =============================================================================
+# ENDPOINT 7: POST /api/admin/expenses/<group_id>/on-behalf/<target_user_id>
+# =============================================================================
+
+@admin_bp.post("/expenses/<group_id:int>/on-behalf/<target_user_id:int>")
+@protected
+@role_required(GlobalRole.ADMIN)
+async def add_expense_on_behalf(
+    request: Request, group_id: int, target_user_id: int
+) -> HTTPResponse:
+    """
+    Adminin, belirtilen kullanıcı adına harcama eklemesi.
+    Hedef kullanıcının grupta onaylı üye olması gerekir.
+    """
+    admin_id: int = int(request.ctx.user["sub"])
+
+    async with get_session() as session:
+        # Grup onaylı mı?
+        stmt_group = select(Group).where(Group.id == group_id, Group.is_approved.is_(True))
+        group = await session.scalar(stmt_group)
+        if not group:
+            raise NotFound(f"Onaylı grup bulunamadı (id={group_id}).")
+
+        # Hedef kullanıcı grubun onaylı üyesi mi?
+        stmt_member = select(GroupMember).where(
+            GroupMember.group_id == group_id,
+            GroupMember.user_id == target_user_id,
+            GroupMember.is_approved.is_(True),
+        )
+        member = await session.scalar(stmt_member)
+        if not member:
+            raise BadRequest("Hedef kullanıcı bu grubun onaylı üyesi değil.")
+
+        # Form alanlarını al
+        form = request.form
+        if not form:
+            raise BadRequest("multipart/form-data formatında gönderilmeli.")
+
+        # amount
+        raw_amount = form.get("amount")
+        if not raw_amount:
+            raise BadRequest("'amount' alanı zorunludur.")
+        try:
+            amount = float(raw_amount)
+            if amount <= 0:
+                raise ValueError
+        except ValueError:
+            raise BadRequest("'amount' pozitif bir sayı olmalıdır.")
+
+        # date
+        raw_date = form.get("date")
+        if not raw_date:
+            raise BadRequest("'date' alanı zorunludur (YYYY-MM-DD).")
+        try:
+            expense_date = date.fromisoformat(raw_date)
+        except ValueError:
+            raise BadRequest("'date' YYYY-MM-DD formatında olmalıdır.")
+
+        content = (form.get("content") or "").strip() or None
+
+        # Fatura fotoğrafı
+        bill_photo_url: str | None = None
+        upload = request.files.get("bill_photo")
+        if upload:
+            if isinstance(upload, list):
+                upload = upload[0]
+            body = upload.body
+            name = upload.name or "receipt.jpg"
+
+            if len(body) > MAX_RECEIPT_SIZE:
+                raise BadRequest(f"Fatura boyutu çok büyük. Max: {MAX_RECEIPT_SIZE // (1024*1024)} MB")
+            if len(body) == 0:
+                raise BadRequest("Boş dosya gönderilemez.")
+
+            ext = Path(name).suffix.lower()
+            if ext not in EXTENSION_TO_MIME:
+                raise BadRequest(f"Geçersiz uzantı: {ext}")
+
+            mime = _detect_mime(body)
+            if not mime or mime not in ALLOWED_MIME_TYPES:
+                raise BadRequest("Geçersiz dosya formatı. JPEG, PNG, GIF veya WebP gönderin.")
+
+            bill_photo_url = await _save_receipt(body, name)
+
+        # Veritabanına kaydet
+        expense = Expense(
+            group_id=group_id,
+            added_by=target_user_id,
+            amount=amount,
+            content=content,
+            bill_photo=bill_photo_url,
+            date=expense_date,
+            is_deleted=False,
+        )
+        session.add(expense)
+        await session.flush()
+
+        # Audit Log
+        await _create_audit_log(
+            session,
+            admin_id=admin_id,
+            process="EXPENSE_ADD_ON_BEHALF",
+            content={
+                "expense_id": expense.id,
+                "group_id": group_id,
+                "target_user_id": target_user_id,
+                "amount": amount,
+            },
+        )
+
+        logger.info(
+            "admin.expense_added_on_behalf",
+            admin_id=admin_id,
+            group_id=group_id,
+            target_user=target_user_id,
+            expense_id=expense.id,
+        )
+
+        return sanic_json(
+            {
+                "message": f"Harcama (Kullanıcı {target_user_id} adına) başarıyla eklendi.",
+                "expense_id": expense.id,
+            },
+            status=201,
+        )
+
+
+# =============================================================================
+# ENDPOINT 8: PUT /api/admin/expenses/<group_id>/<expense_id>
+# =============================================================================
+
+@admin_bp.put("/expenses/<group_id:int>/<expense_id:int>")
+@protected
+@role_required(GlobalRole.ADMIN)
+async def update_expense(
+    request: Request, group_id: int, expense_id: int
+) -> HTTPResponse:
+    """
+    Adminin mevcut bir harcamayı güncellemesi (Partial update).
+    """
+    admin_id: int = int(request.ctx.user["sub"])
+    body = request.json or {}
+
+    if not body:
+        raise BadRequest("Güncellenecek alanlar (JSON formatında) gereklidir.")
+
+    async with get_session() as session:
+        stmt = select(Expense).where(
+            Expense.id == expense_id,
+            Expense.group_id == group_id,
+            Expense.is_deleted.is_(False),
+        )
+        expense = await session.scalar(stmt)
+
+        if not expense:
+            raise NotFound("Harcama bulunamadı veya silinmiş.")
+
+        # Eski değerleri sakla
+        old_values = {
+            "amount": float(expense.amount),
+            "content": expense.content,
+            "date": expense.date.isoformat() if expense.date else None,
+        }
+        new_values = {}
+
+        # amount
+        if "amount" in body:
+            try:
+                new_amt = float(body["amount"])
+                if new_amt <= 0:
+                    raise ValueError
+                expense.amount = new_amt
+                new_values["amount"] = new_amt
+            except (ValueError, TypeError):
+                raise BadRequest("'amount' pozitif bir sayı olmalıdır.")
+
+        # content
+        if "content" in body:
+            new_content = (body["content"] or "").strip() or None
+            expense.content = new_content
+            new_values["content"] = new_content
+
+        # date
+        if "date" in body:
+            try:
+                new_date = date.fromisoformat(body["date"])
+                expense.date = new_date
+                new_values["date"] = body["date"]
+            except (ValueError, TypeError):
+                raise BadRequest("'date' YYYY-MM-DD formatında olmalıdır.")
+
+        if not new_values:
+            return sanic_json({"message": "Değişiklik yapılmadı."}, status=200)
+
+        # Audit Log
+        await _create_audit_log(
+            session,
+            admin_id=admin_id,
+            process="EXPENSE_UPDATE",
+            content={
+                "expense_id": expense_id,
+                "group_id": group_id,
+                "old_values": old_values,
+                "new_values": new_values,
+            },
+        )
+
+        logger.info(
+            "admin.expense_updated",
+            admin_id=admin_id,
+            expense_id=expense_id,
+            updated_fields=list(new_values.keys()),
+        )
+
+        return sanic_json(
+            {
+                "message": "Harcama başarıyla güncellendi.",
+                "updated_fields": new_values,
             },
             status=200,
         )
