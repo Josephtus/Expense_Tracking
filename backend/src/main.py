@@ -283,16 +283,18 @@ from src.routes.groups import groups_bp      # noqa: E402
 # ── Görev 7: Harcama Yönetimi ────────────────────────────────────────────
 from src.routes.expenses import expenses_bp  # noqa: E402
 
+# ── Görev 8: Chat Sistemi (WebSocket) ────────────────────────────────────
+from src.routes.messages import messages_bp  # noqa: E402
+
+# Tüm blueprint'leri tek seferinde kaydet
 app.blueprint(auth_bp)
 app.blueprint(users_bp)
 app.blueprint(groups_bp)
 app.blueprint(expenses_bp)
+app.blueprint(messages_bp)
 
-# ── Görev 8 ve sonrası ────────────────────────────────────────────────────
-# from src.routes.messages import messages_bp
+# ── Görev 9 ve sonrası ────────────────────────────────────────────────────
 # from src.routes.admin import admin_bp
-
-# app.blueprint(messages_bp)
 # app.blueprint(admin_bp)
 
 
