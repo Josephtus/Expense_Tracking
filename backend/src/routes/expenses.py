@@ -236,7 +236,8 @@ async def add_expense(request: Request, group_id: int) -> HTTPResponse:
             is_deleted = False,
         )
         session.add(expense)
-        await session.flush()
+        await session.commit()
+        await session.refresh(expense)
 
         logger.info("expense.added", expense_id=expense.id, group_id=group_id, user_id=user_id)
 

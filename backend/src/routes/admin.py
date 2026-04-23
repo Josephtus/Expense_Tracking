@@ -140,38 +140,19 @@ def _build_report_response(report: Report) -> dict:
         "created_at": report.created_at.isoformat() if report.created_at else None,
     }
     
-    # Eager load edilmişse ekle
-    try:
-        if report.reported_message:
-            msg = report.reported_message
-            resp["reported_message"] = {
-                "id": msg.id,
-                "content": msg.content,
-                "is_deleted": msg.is_deleted,
-            }
-            try:
-                if msg.sender:
-                    resp["reported_message"]["sender"] = {
-                        "id": msg.sender.id,
-                        "name": msg.sender.name,
-                        "surname": msg.sender.surname
-                    }
-            except Exception:
-                pass
-    except Exception:
-        pass
+    # Şikayet eden bilgisi
+    if report.reporter:
+        resp["reporter_name"] = f"{report.reporter.name} {report.reporter.surname}"
 
-    try:
-        if report.reported_user:
-            usr = report.reported_user
-            resp["reported_user"] = {
-                "id": usr.id,
-                "name": usr.name,
-                "surname": usr.surname,
-                "mail": usr.mail
-            }
-    except Exception:
-        pass
+    # Şikayet edilen mesaj bilgisi
+    if report.reported_message:
+        resp["message_content"] = report.reported_message.message_text
+        if report.reported_message.sender:
+            resp["reported_name"] = f"{report.reported_message.sender.name} {report.reported_message.sender.surname}"
+    
+    # Şikayet edilen kullanıcı bilgisi (eğer direkt kullanıcı şikayet edildiyse)
+    elif report.reported_user:
+        resp["reported_name"] = f"{report.reported_user.name} {report.reported_user.surname}"
 
     return resp
 
@@ -187,7 +168,36 @@ def _build_audit_log_response(log: AuditLog) -> dict:
 
 
 # =============================================================================
-# ENDPOINT 1: PUT /api/admin/users/<user_id>/status — Engelle/Kaldır
+# ENDPOINT 1: GET /api/admin/users — Tüm Kullanıcıları Listele
+# =============================================================================
+
+@admin_bp.get("/users")
+@protected
+@role_required(GlobalRole.ADMIN)
+async def list_users(request: Request) -> HTTPResponse:
+    """Sistemdeki tüm kullanıcıları (silinmemiş olanlar) listeler."""
+    async with get_session() as session:
+        stmt = select(User).where(User.deleted_at.is_(None)).order_by(User.id.desc())
+        users = list(await session.scalars(stmt))
+        
+        data = []
+        for u in users:
+            data.append({
+                "id": u.id,
+                "name": u.name,
+                "surname": u.surname,
+                "mail": u.mail,
+                "phone_number": u.phone_number,
+                "role": u.role.value,
+                "is_active": u.is_active,
+                "created_at": u.created_at.isoformat() if u.created_at else None
+            })
+            
+        return sanic_json({"users": data}, status=200)
+
+
+# =============================================================================
+# ENDPOINT 1.5: PUT /api/admin/users/<user_id>/status — Engelle/Kaldır
 # =============================================================================
 
 @admin_bp.put("/users/<user_id:int>/status")
@@ -243,7 +253,7 @@ async def toggle_user_status(request: Request, user_id: int) -> HTTPResponse:
 # ENDPOINT 2: PUT /api/admin/groups/<group_id>/approve — Grup Onayla
 # =============================================================================
 
-@admin_bp.put("/groups/<group_id:int>/approve")
+@admin_bp.post("/groups/<group_id:int>/approve")
 @protected
 @role_required(GlobalRole.ADMIN)
 async def approve_group(request: Request, group_id: int) -> HTTPResponse:
@@ -279,6 +289,40 @@ async def approve_group(request: Request, group_id: int) -> HTTPResponse:
             {"message": f"Grup (id={group_id}) başarıyla onaylandı."},
             status=200,
         )
+
+
+# =============================================================================
+# ENDPOINT 2.5: GET /api/admin/groups — Tüm Grupları Listele
+# =============================================================================
+
+@admin_bp.get("/groups")
+@protected
+@role_required(GlobalRole.ADMIN)
+async def list_groups(request: Request) -> HTTPResponse:
+    """Sistemdeki tüm grupları (onaylı ve onay bekleyen) listeler."""
+    async with get_session() as session:
+        from sqlalchemy import func
+        # Grup ve üye sayısını birlikte çek
+        stmt = (
+            select(Group, func.count(GroupMember.id).label("member_count"))
+            .outerjoin(GroupMember, GroupMember.group_id == Group.id)
+            .group_by(Group.id)
+            .order_by(Group.created_at.desc())
+        )
+        results = await session.execute(stmt)
+        
+        data = []
+        for group, member_count in results:
+            data.append({
+                "id": group.id,
+                "name": group.name,
+                "content": group.content,
+                "is_approved": group.is_approved,
+                "created_at": group.created_at.isoformat() if group.created_at else None,
+                "member_count": member_count
+            })
+            
+        return sanic_json({"groups": data}, status=200)
 
 
 # =============================================================================
@@ -406,6 +450,7 @@ async def list_reports(request: Request) -> HTTPResponse:
         stmt = (
             select(Report)
             .options(
+                selectinload(Report.reporter),
                 selectinload(Report.reported_message).selectinload(Message.sender),
                 selectinload(Report.reported_user)
             )
@@ -426,10 +471,48 @@ async def list_reports(request: Request) -> HTTPResponse:
                 "page": page,
                 "limit": limit,
                 "count": len(reports),
-                "data": [_build_report_response(r) for r in reports],
+                "reports": [_build_report_response(r) for r in reports],
             },
             status=200,
         )
+
+
+# =============================================================================
+# ENDPOINT 5.5: PUT /api/admin/reports/<report_id> — Şikayet Durumu Güncelle
+# =============================================================================
+
+@admin_bp.put("/reports/<report_id:int>")
+@protected
+@role_required(GlobalRole.ADMIN)
+async def update_report_status(request: Request, report_id: int) -> HTTPResponse:
+    """Şikayeti çözüldü (resolved) veya reddedildi (dismissed) olarak işaretler."""
+    admin_id: int = int(request.ctx.user["sub"])
+    body = request.json or {}
+    new_status = body.get("status")
+
+    if new_status not in [ReportStatus.RESOLVED.value, ReportStatus.DISMISSED.value]:
+        raise BadRequest("Geçersiz durum. 'resolved' veya 'dismissed' olmalıdır.")
+
+    async with get_session() as session:
+        stmt = select(Report).where(Report.id == report_id)
+        report = await session.scalar(stmt)
+
+        if not report:
+            raise NotFound("Şikayet bulunamadı.")
+
+        report.status = ReportStatus(new_status)
+        
+        # Audit Log
+        await _create_audit_log(
+            session,
+            admin_id=admin_id,
+            process="REPORT_STATUS_UPDATE",
+            content={"report_id": report_id, "new_status": new_status}
+        )
+
+        logger.info("admin.report_updated", admin_id=admin_id, report_id=report_id, status=new_status)
+
+        return sanic_json({"message": f"Şikayet durumu '{new_status}' olarak güncellendi."}, status=200)
 
 
 # =============================================================================
@@ -466,10 +549,18 @@ async def list_audit_logs(request: Request) -> HTTPResponse:
                 "page": page,
                 "limit": limit,
                 "count": len(logs),
-                "data": [_build_audit_log_response(log) for log in logs],
+                "logs": [_build_audit_log_response(log) for log in logs],
             },
             status=200,
         )
+
+
+@admin_bp.get("/logs")
+@protected
+@role_required(GlobalRole.ADMIN)
+async def list_audit_logs_alias(request: Request) -> HTTPResponse:
+    """Alias for /audit-logs — frontend AdminLogs bileşeni bu rotayı kullanır."""
+    return await list_audit_logs(request)
 
 
 # =============================================================================
@@ -1008,3 +1099,93 @@ async def admin_get_group_expenses(request: Request, group_id: int) -> HTTPRespo
             },
             status=200
         )
+# =============================================================================
+# ENDPOINT 14: POST /api/admin/groups — Admin Doğrudan Grup Oluşturma
+# =============================================================================
+
+@admin_bp.post("/groups")
+@protected
+@role_required(GlobalRole.ADMIN)
+async def admin_create_group(request: Request) -> HTTPResponse:
+    """Admin tarafından doğrudan onaylı grup oluşturur."""
+    admin_id: int = int(request.ctx.user["sub"])
+    body = request.json
+    if not body or "name" not in body:
+        raise BadRequest("Grup ismi zorunludur.")
+
+    async with get_session() as session:
+        new_group = Group(
+            name=body["name"],
+            content=body.get("content"),
+            is_approved=True # Admin oluşturduğu için direkt onaylı
+        )
+        session.add(new_group)
+        await session.flush()
+
+        # Admini de gruba leader olarak ekleyelim (isteğe bağlı ama takip için iyi)
+        from src.models import GroupMember, GroupMemberRole
+        leader_membership = GroupMember(
+            user_id=admin_id,
+            group_id=new_group.id,
+            role=GroupMemberRole.GROUP_LEADER,
+            is_approved=True
+        )
+        session.add(leader_membership)
+        
+        await session.commit()
+        await session.refresh(new_group)
+
+        # Audit Log
+        await _create_audit_log(
+            session,
+            admin_id=admin_id,
+            process="ADMIN_GROUP_CREATE",
+            content={"group_id": new_group.id, "name": new_group.name}
+        )
+
+        return sanic_json({
+            "message": "Grup admin tarafından oluşturuldu.",
+            "group": {
+                "id": new_group.id,
+                "name": new_group.name,
+                "is_approved": True
+            }
+        }, status=201)
+
+
+# =============================================================================
+# ENDPOINT 16: GET /api/admin/groups/<group_id>/members — Grup Üyelerini Listele
+# =============================================================================
+
+@admin_bp.get("/groups/<group_id:int>/members")
+@protected
+@role_required(GlobalRole.ADMIN)
+async def admin_get_group_members(request: Request, group_id: int) -> HTTPResponse:
+    """Grubun tüm üyelerini listeler."""
+    async with get_session() as session:
+        stmt = (
+            select(GroupMember)
+            .where(GroupMember.group_id == group_id)
+            .options(selectinload(GroupMember.user))
+            .order_by(GroupMember.role.desc(), GroupMember.created_at.asc())
+        )
+        memberships = list(await session.scalars(stmt))
+
+        data = []
+        for m in memberships:
+            item = {
+                "id": m.id,
+                "user_id": m.user_id,
+                "role": m.role.value,
+                "is_approved": m.is_approved,
+                "joined_at": m.created_at.isoformat() if m.created_at else None,
+            }
+            if m.user:
+                item["user"] = {
+                    "name": m.user.name,
+                    "surname": m.user.surname,
+                    "mail": m.user.mail
+                }
+            data.append(item)
+
+        return sanic_json({"members": data}, status=200)

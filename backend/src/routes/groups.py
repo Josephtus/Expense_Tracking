@@ -208,6 +208,11 @@ async def create_group(request: Request) -> HTTPResponse:
         )
         session.add(leader_membership)
 
+        # Commit and refresh to ensure server-side fields (like created_at) are loaded
+        await session.commit()
+        await session.refresh(new_group)
+        await session.refresh(leader_membership)
+
         logger.info(
             "group.created",
             group_id=new_group.id,

@@ -423,12 +423,12 @@ async def reset_password(request: Request) -> HTTPResponse:
     redis_key = f"reset_token:{data.token}"
     
     # Redis'ten user_id al
-    user_id_bytes = await request.app.ctx.redis.get(redis_key)
-    if not user_id_bytes:
+    user_id_str = await request.app.ctx.redis.get(redis_key)
+    if not user_id_str:
         logger.warning("auth.reset_password.invalid_token", token=data.token)
         raise BadRequest("Geçersiz veya süresi dolmuş bir token kullandınız.")
 
-    user_id = int(user_id_bytes.decode("utf-8"))
+    user_id = int(user_id_str)
 
     async with get_session() as session:
         stmt = select(User).where(User.id == user_id, User.deleted_at.is_(None))

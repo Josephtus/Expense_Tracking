@@ -9,17 +9,18 @@ interface AdminUser {
   phone_number: string;
   role: string;
   is_active: boolean;
+  age?: number;
 }
 
 export const AdminUsers: React.FC = () => {
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
+  const [editingUser, setEditingUser] = useState<AdminUser | null>(null);
 
   const fetchUsers = async () => {
     try {
       setLoading(true);
-      // Admin rotası: /admin/users (Backend'de mevcut olduğu varsayılıyor)
       const res = await apiFetch('/admin/users');
       const data = await res.json();
       setUsers(data.users || []);
@@ -36,7 +37,6 @@ export const AdminUsers: React.FC = () => {
 
   const toggleUserStatus = async (userId: number, currentStatus: boolean) => {
     try {
-      // Backend: PUT /admin/users/<id>/status
       await apiFetch(`/admin/users/${userId}/status`, {
         method: 'PUT',
         body: JSON.stringify({ is_active: !currentStatus })
@@ -47,9 +47,29 @@ export const AdminUsers: React.FC = () => {
     }
   };
 
-  const filteredUsers = users.filter(u => 
-    u.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
-    u.mail.toLowerCase().includes(searchTerm.toLowerCase())
+  const handleUpdateUser = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingUser) return;
+    try {
+      await apiFetch(`/admin/users/${editingUser.id}`, {
+        method: 'PUT',
+        body: JSON.stringify({
+          name: editingUser.name,
+          surname: editingUser.surname,
+          phone_number: editingUser.phone_number,
+          age: editingUser.age || 0
+        })
+      });
+      setEditingUser(null);
+      fetchUsers();
+    } catch (err) {
+      alert("Güncelleme başarısız");
+    }
+  };
+
+  const filteredUsers = (users || []).filter(u => 
+    (u.name || '').toLowerCase().includes(searchTerm.toLowerCase()) || 
+    (u.mail || '').toLowerCase().includes(searchTerm.toLowerCase())
   );
 
   return (
@@ -108,12 +128,81 @@ export const AdminUsers: React.FC = () => {
                     >
                       {user.is_active ? 'Engelle' : 'Engeli Kaldır'}
                     </button>
-                    <button className="text-xs font-bold bg-slate-800 text-slate-300 px-3 py-1.5 rounded-lg hover:bg-slate-700">Düzenle</button>
+                    <button 
+                      onClick={() => setEditingUser(user)}
+                      className="text-xs font-bold bg-slate-800 text-slate-300 px-3 py-1.5 rounded-lg hover:bg-slate-700"
+                    >
+                      Düzenle
+                    </button>
                   </td>
                 </tr>
               ))}
             </tbody>
           </table>
+        </div>
+      )}
+
+      {editingUser && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-slate-800 w-full max-w-md rounded-2xl shadow-2xl overflow-hidden">
+            <div className="p-6 border-b border-slate-800 flex justify-between items-center">
+              <h4 className="text-xl font-bold text-slate-100">Kullanıcıyı Düzenle</h4>
+              <button onClick={() => setEditingUser(null)} className="text-slate-500 hover:text-white">✕</button>
+            </div>
+            <form onSubmit={handleUpdateUser} className="p-6 space-y-4">
+              <div>
+                <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Ad</label>
+                <input 
+                  type="text" 
+                  className="w-full bg-slate-950 border border-slate-800 rounded-lg px-4 py-2 text-slate-200 focus:border-[#00f0ff] outline-none"
+                  value={editingUser.name || ''}
+                  onChange={(e) => setEditingUser({...editingUser, name: e.target.value})}
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Soyad</label>
+                <input 
+                  type="text" 
+                  className="w-full bg-slate-950 border border-slate-800 rounded-lg px-4 py-2 text-slate-200 focus:border-[#00f0ff] outline-none"
+                  value={editingUser.surname || ''}
+                  onChange={(e) => setEditingUser({...editingUser, surname: e.target.value})}
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Telefon</label>
+                <input 
+                  type="text" 
+                  className="w-full bg-slate-950 border border-slate-800 rounded-lg px-4 py-2 text-slate-200 focus:border-[#00f0ff] outline-none"
+                  value={editingUser.phone_number || ''}
+                  onChange={(e) => setEditingUser({...editingUser, phone_number: e.target.value})}
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Yaş</label>
+                <input 
+                  type="number" 
+                  className="w-full bg-slate-950 border border-slate-800 rounded-lg px-4 py-2 text-slate-200 focus:border-[#00f0ff] outline-none"
+                  value={editingUser.age || ''}
+                  onChange={(e) => setEditingUser({...editingUser, age: parseInt(e.target.value) || 0})}
+                />
+              </div>
+              <div className="pt-4 flex gap-3">
+                <button 
+                  type="submit"
+                  className="flex-1 bg-[#00f0ff] text-slate-950 font-bold py-2 rounded-xl hover:shadow-[0_0_15px_#00f0ff] transition-all"
+                >
+                  Kaydet
+                </button>
+                <button 
+                  type="button"
+                  onClick={() => setEditingUser(null)}
+                  className="flex-1 bg-slate-800 text-slate-300 font-bold py-2 rounded-xl hover:bg-slate-700"
+                >
+                  Vazgeç
+                </button>
+              </div>
+            </form>
+          </div>
         </div>
       )}
     </div>

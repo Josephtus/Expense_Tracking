@@ -9,6 +9,7 @@ import { GroupChat } from './GroupChat';
 import { SocialList } from './SocialList';
 import { ReportForm } from './ReportForm';
 import { AdminPanel } from './admin/AdminPanel';
+import { CreateGroupModal } from './CreateGroupModal';
 
 type TabType = 'Gruplar' | 'Harcamalar' | 'Borç Durumu' | 'Sohbet' | 'Sosyal' | 'Profil' | 'Şikayet' | 'Admin';
 
@@ -17,7 +18,9 @@ export const Dashboard: React.FC = () => {
   const [loading, setLoading] = useState(true);
   
   const [activeGroupId, setActiveGroupId] = useState<number | null>(null);
+  const [activeGroupName, setActiveGroupName] = useState<string | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [refreshTrigger, setRefreshTrigger] = useState(0);
 
   const [activeTab, setActiveTab] = useState<TabType>('Gruplar');
@@ -50,11 +53,18 @@ export const Dashboard: React.FC = () => {
     );
   }
 
-  const navTabs: TabType[] = [
-    'Gruplar', 'Harcamalar', 'Borç Durumu', 'Sohbet', 'Sosyal', 'Profil', 'Şikayet'
-  ];
+  // Dinamik sekmeler
+  const navTabs: TabType[] = ['Gruplar'];
+  
+  // Eğer bir grup seçiliyse gruba özel sekmeleri ekle
+  if (activeGroupId) {
+    navTabs.push('Harcamalar', 'Borç Durumu', 'Sohbet');
+  }
+  
+  navTabs.push('Sosyal', 'Profil', 'Şikayet');
+
   if (user?.role?.toLowerCase() === 'admin') {
-    navTabs.unshift('Admin'); // Admin sekmesini en başa alalım ki kaçmasın
+    navTabs.unshift('Admin');
   }
 
   return (
@@ -66,15 +76,40 @@ export const Dashboard: React.FC = () => {
               <div className="w-10 h-10 bg-gradient-to-br from-[#00f0ff] to-[#b026ff] rounded-xl flex items-center justify-center font-black text-slate-900 text-xl shadow-[0_0_15px_rgba(0,240,255,0.4)]">
                 ET
               </div>
-              <h1 className="text-xl font-black text-slate-100 hidden md:block">EXPENSE <span className="text-[#00f0ff]">TRACKER</span></h1>
+              <div className="flex flex-col">
+                <h1 className="text-xl font-black text-slate-100 hidden md:block">EXPENSE <span className="text-[#00f0ff]">TRACKER</span></h1>
+                {activeGroupName && (
+                  <span className="text-[10px] text-[#00f0ff] font-bold uppercase tracking-widest flex items-center gap-1">
+                    <span className="w-1.5 h-1.5 bg-[#00f0ff] rounded-full animate-pulse"></span>
+                    AKTİF GRUP: {activeGroupName}
+                  </span>
+                )}
+              </div>
             </div>
             
             <div className="flex items-center gap-4">
-              <div className="text-sm text-slate-400">
-                Hoş Geldin, <span className="text-slate-100 font-bold">{user?.name}</span>
-                {user?.role?.toLowerCase() === 'admin' && <span className="ml-2 bg-red-500/20 text-red-400 text-[10px] px-2 py-0.5 rounded-full font-black uppercase tracking-tighter">Admin Yetkisi</span>}
+              {activeTab === 'Gruplar' && (
+                <button 
+                  onClick={() => setIsCreateModalOpen(true)}
+                  className="hidden sm:flex items-center gap-2 bg-[#b026ff] text-white px-4 py-2 rounded-xl font-bold text-xs hover:bg-[#c455ff] transition-all shadow-lg"
+                >
+                  + Yeni Grup Oluştur
+                </button>
+              )}
+              
+              {activeGroupId && (
+                <button 
+                  onClick={() => { setActiveGroupId(null); setActiveGroupName(null); setActiveTab('Gruplar'); }}
+                  className="text-xs font-bold text-slate-400 hover:text-white transition-colors flex items-center gap-1"
+                >
+                  ✖ Grubu Kapat
+                </button>
+              )}
+
+              <div className="text-sm text-slate-400 border-l border-slate-800 pl-4">
+                <span className="text-slate-100 font-bold">{user?.name}</span>
               </div>
-              <button onClick={logout} className="p-2 hover:bg-red-500/10 rounded-lg text-red-400 transition-colors text-sm font-bold">Çıkış</button>
+              <button onClick={logout} className="p-2 hover:bg-red-500/10 rounded-lg text-red-400 transition-colors text-xs font-bold">Çıkış</button>
             </div>
           </div>
           
@@ -99,9 +134,18 @@ export const Dashboard: React.FC = () => {
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
         
         {activeTab === 'Gruplar' && (
-          <GroupList onSelectGroup={(id) => { setActiveGroupId(id); setActiveTab('Harcamalar'); }} activeGroupId={activeGroupId} />
+          <GroupList 
+            onSelectGroup={(id, name) => { 
+              setActiveGroupId(id); 
+              setActiveGroupName(name);
+              setActiveTab('Harcamalar'); 
+            }} 
+            activeGroupId={activeGroupId} 
+            refreshTrigger={refreshTrigger}
+          />
         )}
 
+        {/* Fallback for manually navigating to group-only tabs without a selected group (unlikely now with dynamic nav but good for safety) */}
         {(activeTab === 'Harcamalar' || activeTab === 'Borç Durumu' || activeTab === 'Sohbet') && !activeGroupId && (
           <div className="p-12 text-center bg-slate-900 rounded-3xl border border-slate-800 border-dashed">
             <p className="text-slate-400 mb-4 italic">Bu özelliği kullanmak için önce "Gruplar" sekmesinden bir grup seçmelisiniz.</p>
@@ -112,7 +156,10 @@ export const Dashboard: React.FC = () => {
         {activeTab === 'Harcamalar' && activeGroupId && (
           <div className="flex flex-col w-full max-w-5xl mx-auto space-y-6">
             <div className="w-full flex justify-between items-center bg-slate-900 p-6 rounded-2xl border border-slate-800 shadow-xl">
-              <h2 className="text-2xl font-bold text-slate-100">Grup Harcamaları</h2>
+              <div>
+                <h2 className="text-2xl font-bold text-slate-100">Grup Harcamaları</h2>
+                <p className="text-xs text-slate-500 mt-1 font-bold">{activeGroupName} grubuna ait harcamalar</p>
+              </div>
               <button className="px-6 py-3 rounded-xl font-bold bg-[#b026ff] text-white hover:bg-[#c455ff] transition-all shadow-lg" onClick={() => setIsModalOpen(true)}>+ Harcama Ekle</button>
             </div>
             <ExpenseList groupId={activeGroupId} refreshTrigger={refreshTrigger} />
@@ -126,9 +173,25 @@ export const Dashboard: React.FC = () => {
           </div>
         )}
 
-        {activeTab === 'Borç Durumu' && activeGroupId && <DebtList groupId={activeGroupId} />}
+        {activeTab === 'Borç Durumu' && activeGroupId && (
+          <div className="space-y-6">
+             <div className="bg-slate-900 p-6 rounded-2xl border border-slate-800 shadow-xl mb-6">
+                <h2 className="text-2xl font-bold text-slate-100">Borç Durumu</h2>
+                <p className="text-xs text-slate-500 mt-1 font-bold">{activeGroupName} grubu için hesaplaşma detayları</p>
+             </div>
+             <DebtList groupId={activeGroupId} />
+          </div>
+        )}
         
-        {activeTab === 'Sohbet' && activeGroupId && <GroupChat groupId={activeGroupId} currentUserId={user?.id} />}
+        {activeTab === 'Sohbet' && activeGroupId && (
+          <div className="space-y-6">
+            <div className="bg-slate-900 p-6 rounded-2xl border border-slate-800 shadow-xl mb-6">
+                <h2 className="text-2xl font-bold text-slate-100">Grup Sohbeti</h2>
+                <p className="text-xs text-slate-500 mt-1 font-bold">{activeGroupName} grubu mesajlaşma alanı</p>
+            </div>
+            <GroupChat groupId={activeGroupId} currentUserId={user?.id} />
+          </div>
+        )}
 
         {activeTab === 'Sosyal' && <SocialList currentUserId={user?.id} />}
 
@@ -138,6 +201,16 @@ export const Dashboard: React.FC = () => {
 
         {activeTab === 'Admin' && user?.role?.toLowerCase() === 'admin' && <AdminPanel />}
         
+        {isCreateModalOpen && (
+          <CreateGroupModal 
+            onClose={() => setIsCreateModalOpen(false)}
+            onSuccess={() => {
+              setIsCreateModalOpen(false);
+              setRefreshTrigger(prev => prev + 1);
+              alert("Grup oluşturma isteği alındı. Onay bekleniyor.");
+            }}
+          />
+        )}
       </main>
     </div>
   );

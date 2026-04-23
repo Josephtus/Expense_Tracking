@@ -225,10 +225,10 @@ class Group(Base):
         "GroupMember", back_populates="group", cascade="all, delete-orphan"
     )
     expenses: Mapped[List["Expense"]] = relationship(
-        "Expense", back_populates="group"
+        "Expense", back_populates="group", cascade="all, delete-orphan"
     )
     messages: Mapped[List["Message"]] = relationship(
-        "Message", back_populates="group"
+        "Message", back_populates="group", cascade="all, delete-orphan"
     )
 
     def __repr__(self) -> str:
