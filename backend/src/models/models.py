@@ -267,13 +267,19 @@ class GroupMember(Base):
     joined_at: Mapped[datetime] = mapped_column(
         DateTime, nullable=False, server_default=func.now()
     )
+    is_approved: Mapped[bool] = mapped_column(
+        Boolean,
+        nullable=False,
+        default=False,
+        comment="Grup lideri onaylayana kadar False. True ise üye aktif kabul edilir.",
+    )
 
     # ── İlişkiler ───────────────────────────────────────────────────────────
     user: Mapped["User"] = relationship("User", back_populates="group_memberships")
     group: Mapped["Group"] = relationship("Group", back_populates="members")
 
     def __repr__(self) -> str:
-        return f"<GroupMember user={self.user_id} group={self.group_id} role={self.role}>"
+        return f"<GroupMember user={self.user_id} group={self.group_id} role={self.role} approved={self.is_approved}>"
 
 
 # =============================================================================

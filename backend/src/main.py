@@ -277,18 +277,18 @@ from src.routes.auth import auth_bp          # noqa: E402
 # ── Görev 5: Kullanıcı Profil Yönetimi ────────────────────────────────────
 from src.routes.users import users_bp        # noqa: E402
 
+# ── Görev 6: Grup Yönetimi ────────────────────────────────────────────────
+from src.routes.groups import groups_bp      # noqa: E402
+
 app.blueprint(auth_bp)
 app.blueprint(users_bp)
+app.blueprint(groups_bp)
 
-# ── Görev 6 ve sonrası (dosyalar oluşturulduğunda aktif edilecek) ───────────
-# from src.routes.users import users_bp  # zaten aktif
-# from src.routes.groups import groups_bp
+# ── Görev 7 ve sonrası (dosyalar oluşturulduğunda aktif edilecek) ───────────
 # from src.routes.expenses import expenses_bp
 # from src.routes.messages import messages_bp
 # from src.routes.admin import admin_bp
 
-# app.blueprint(users_bp)
-# app.blueprint(groups_bp)
 # app.blueprint(expenses_bp)
 # app.blueprint(messages_bp)
 # app.blueprint(admin_bp)
