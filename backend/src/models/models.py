@@ -119,10 +119,10 @@ class User(Base):
     # Kişisel bilgiler
     name: Mapped[str] = mapped_column(String(100), nullable=False)
     surname: Mapped[str] = mapped_column(String(100), nullable=False)
-    age: Mapped[Optional[int]] = mapped_column(SmallInteger, nullable=True)
-    birthday: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
-    phone_number: Mapped[Optional[str]] = mapped_column(
-        String(20), unique=True, nullable=True, comment="Uluslararası formatta: +905xxxxxxxxx"
+    age: Mapped[int] = mapped_column(SmallInteger, nullable=False)
+    birthday: Mapped[date] = mapped_column(Date, nullable=False)
+    phone_number: Mapped[str] = mapped_column(
+        String(20), unique=True, nullable=False, comment="Uluslararası formatta: +905xxxxxxxxx"
     )
 
     # Kimlik doğrulama

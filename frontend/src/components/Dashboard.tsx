@@ -5,137 +5,138 @@ import { ExpenseList } from './ExpenseList';
 import { GroupList } from './GroupList';
 import { DebtList } from './DebtList';
 import { ProfileSettings } from './ProfileSettings';
+import { GroupChat } from './GroupChat';
+import { SocialList } from './SocialList';
+import { ReportForm } from './ReportForm';
+import { AdminPanel } from './admin/AdminPanel';
 
-type TabType = 'Gruplar' | 'Harcamalar' | 'Borç Durumu' | 'Profil';
+type TabType = 'Gruplar' | 'Harcamalar' | 'Borç Durumu' | 'Sohbet' | 'Sosyal' | 'Profil' | 'Şikayet' | 'Admin';
 
 export const Dashboard: React.FC = () => {
   const [user, setUser] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   
-  // Test için sabit Group ID (İleride dinamik yapılacak)
-  const [activeGroupId] = useState(1);
+  const [activeGroupId, setActiveGroupId] = useState<number | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [refreshTrigger, setRefreshTrigger] = useState(0);
 
-  // Tab State'i
   const [activeTab, setActiveTab] = useState<TabType>('Gruplar');
-  const tabs: TabType[] = ['Gruplar', 'Harcamalar', 'Borç Durumu', 'Profil'];
 
   useEffect(() => {
     const fetchUser = async () => {
       try {
         const response = await apiFetch('/auth/me');
         const data = await response.json();
-        setUser(data);
+        setUser(data.user);
       } catch (error) {
         console.error('Kullanıcı bilgileri alınırken hata:', error);
       } finally {
         setLoading(false);
       }
     };
-
     fetchUser();
   }, []);
 
+  const logout = () => {
+    localStorage.removeItem('token');
+    window.location.reload();
+  };
+
   if (loading) {
     return (
-      <div className="flex flex-col items-center justify-center min-h-screen p-4 bg-slate-950">
-        <div className="w-full max-w-md p-10 bg-slate-900 border border-slate-800 rounded-2xl shadow-xl text-center">
-          <h2 className="text-3xl font-bold text-[#00f0ff] animate-pulse drop-shadow-glow-blue">Yükleniyor...</h2>
-        </div>
+      <div className="flex flex-col items-center justify-center min-h-screen bg-slate-950">
+        <h2 className="text-3xl font-bold text-[#00f0ff] animate-pulse">Yükleniyor...</h2>
       </div>
     );
   }
 
+  const navTabs: TabType[] = [
+    'Gruplar', 'Harcamalar', 'Borç Durumu', 'Sohbet', 'Sosyal', 'Profil', 'Şikayet'
+  ];
+  if (user?.role?.toLowerCase() === 'admin') {
+    navTabs.unshift('Admin'); // Admin sekmesini en başa alalım ki kaçmasın
+  }
+
   return (
     <div className="min-h-screen bg-slate-950 text-slate-200">
-      {/* Üst Kısım ve Navigasyon Menüsü (Tabs) */}
       <header className="bg-slate-900 border-b border-slate-800 sticky top-0 z-40 shadow-lg">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex flex-col sm:flex-row justify-between items-center py-5">
-            <h1 className="text-2xl font-black text-[#00f0ff] drop-shadow-glow-blue mb-4 sm:mb-0 tracking-wide">
-              SplitApp
-            </h1>
-            <div className="text-slate-300 font-medium bg-slate-800/50 px-4 py-1.5 rounded-full border border-slate-700">
-              Hoş Geldin{user?.name ? `, ${user.name}` : ''}
+          <div className="flex justify-between items-center py-5 border-b border-slate-800/50 mb-2">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 bg-gradient-to-br from-[#00f0ff] to-[#b026ff] rounded-xl flex items-center justify-center font-black text-slate-900 text-xl shadow-[0_0_15px_rgba(0,240,255,0.4)]">
+                ET
+              </div>
+              <h1 className="text-xl font-black text-slate-100 hidden md:block">EXPENSE <span className="text-[#00f0ff]">TRACKER</span></h1>
+            </div>
+            
+            <div className="flex items-center gap-4">
+              <div className="text-sm text-slate-400">
+                Hoş Geldin, <span className="text-slate-100 font-bold">{user?.name}</span>
+                {user?.role?.toLowerCase() === 'admin' && <span className="ml-2 bg-red-500/20 text-red-400 text-[10px] px-2 py-0.5 rounded-full font-black uppercase tracking-tighter">Admin Yetkisi</span>}
+              </div>
+              <button onClick={logout} className="p-2 hover:bg-red-500/10 rounded-lg text-red-400 transition-colors text-sm font-bold">Çıkış</button>
             </div>
           </div>
           
-          <nav className="flex space-x-2 overflow-x-auto pb-0 hide-scrollbar mt-2">
-            {tabs.map((tab) => (
+          <nav className="flex space-x-2 overflow-x-auto pb-0 no-scrollbar scroll-smooth">
+            {navTabs.map((tab) => (
               <button
                 key={tab}
                 onClick={() => setActiveTab(tab)}
-                className={`whitespace-nowrap py-3.5 px-6 rounded-t-xl font-bold text-sm sm:text-base transition-all ${
+                className={`whitespace-nowrap py-3 px-5 rounded-t-xl font-bold text-xs sm:text-sm transition-all ${
                   activeTab === tab
-                    ? 'bg-slate-800 text-[#00f0ff] border-t-2 border-l border-r border-[#00f0ff]/30 shadow-[inset_0_2px_10px_rgba(0,240,255,0.1)]'
-                    : 'text-slate-400 border-t-2 border-transparent hover:text-slate-200 hover:bg-slate-800/50'
+                    ? 'bg-slate-800 text-[#00f0ff] border-t-2 border-[#00f0ff] shadow-[0_-4px_10px_rgba(0,240,255,0.1)]'
+                    : 'text-slate-500 border-t-2 border-transparent hover:text-slate-300'
                 }`}
               >
-                {tab}
+                {tab === 'Admin' ? '🛡️ ADMİN PANEL' : tab}
               </button>
             ))}
           </nav>
         </div>
       </header>
 
-      {/* Ana İçerik Alanı */}
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10 animate-fade-in-up">
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
         
-        {/* Gruplar Sekmesi */}
         {activeTab === 'Gruplar' && (
-          <GroupList />
+          <GroupList onSelectGroup={(id) => { setActiveGroupId(id); setActiveTab('Harcamalar'); }} activeGroupId={activeGroupId} />
         )}
 
-        {/* Harcamalar Sekmesi */}
-        {activeTab === 'Harcamalar' && (
-          <div className="flex flex-col items-center w-full max-w-5xl mx-auto space-y-6">
-            <div className="w-full flex flex-col sm:flex-row justify-between items-center bg-slate-900 p-6 rounded-2xl border border-slate-800 shadow-xl">
-              <h2 className="text-2xl font-bold text-slate-100 mb-4 sm:mb-0">Grup Harcamaları</h2>
-              <button 
-                className="px-6 py-3 rounded-xl font-bold bg-[#b026ff] text-white hover:bg-[#c455ff] transition-all drop-shadow-glow-purple shadow-lg hover:shadow-[#b026ff]/50 hover:-translate-y-0.5 flex items-center gap-2 w-full sm:w-auto justify-center"
-                onClick={() => setIsModalOpen(true)}
-              >
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 4v16m8-8H4" />
-                </svg>
-                Harcama Ekle
-              </button>
+        {(activeTab === 'Harcamalar' || activeTab === 'Borç Durumu' || activeTab === 'Sohbet') && !activeGroupId && (
+          <div className="p-12 text-center bg-slate-900 rounded-3xl border border-slate-800 border-dashed">
+            <p className="text-slate-400 mb-4 italic">Bu özelliği kullanmak için önce "Gruplar" sekmesinden bir grup seçmelisiniz.</p>
+            <button onClick={() => setActiveTab('Gruplar')} className="text-[#00f0ff] font-bold underline hover:text-[#4dffff]">Gruplara Git →</button>
+          </div>
+        )}
+
+        {activeTab === 'Harcamalar' && activeGroupId && (
+          <div className="flex flex-col w-full max-w-5xl mx-auto space-y-6">
+            <div className="w-full flex justify-between items-center bg-slate-900 p-6 rounded-2xl border border-slate-800 shadow-xl">
+              <h2 className="text-2xl font-bold text-slate-100">Grup Harcamaları</h2>
+              <button className="px-6 py-3 rounded-xl font-bold bg-[#b026ff] text-white hover:bg-[#c455ff] transition-all shadow-lg" onClick={() => setIsModalOpen(true)}>+ Harcama Ekle</button>
             </div>
-            
-            <div className="w-full">
-              <ExpenseList groupId={activeGroupId} refreshTrigger={refreshTrigger} />
-            </div>
-            
-            {/* Harcama Ekleme Modalı */}
+            <ExpenseList groupId={activeGroupId} refreshTrigger={refreshTrigger} />
             {isModalOpen && (
               <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-md p-4">
-                <div className="relative w-full max-w-md animate-fade-in-up">
-                  <ExpenseForm 
-                    groupId={activeGroupId}
-                    onSuccess={() => {
-                      setIsModalOpen(false);
-                      setRefreshTrigger(prev => prev + 1);
-                    }}
-                    onCancel={() => setIsModalOpen(false)}
-                  />
+                <div className="relative w-full max-w-md">
+                  <ExpenseForm groupId={activeGroupId} onSuccess={() => { setIsModalOpen(false); setRefreshTrigger(prev => prev + 1); }} onCancel={() => setIsModalOpen(false)} />
                 </div>
               </div>
             )}
           </div>
         )}
 
-        {/* Borç Durumu Sekmesi */}
-        {activeTab === 'Borç Durumu' && (
-          <div className="w-full max-w-4xl mx-auto">
-            <DebtList groupId={activeGroupId} />
-          </div>
-        )}
+        {activeTab === 'Borç Durumu' && activeGroupId && <DebtList groupId={activeGroupId} />}
+        
+        {activeTab === 'Sohbet' && activeGroupId && <GroupChat groupId={activeGroupId} currentUserId={user?.id} />}
 
-        {/* Profil Sekmesi */}
-        {activeTab === 'Profil' && (
-          <ProfileSettings />
-        )}
+        {activeTab === 'Sosyal' && <SocialList currentUserId={user?.id} />}
+
+        {activeTab === 'Profil' && <ProfileSettings />}
+
+        {activeTab === 'Şikayet' && <ReportForm />}
+
+        {activeTab === 'Admin' && user?.role?.toLowerCase() === 'admin' && <AdminPanel />}
         
       </main>
     </div>

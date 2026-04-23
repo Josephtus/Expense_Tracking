@@ -1,10 +1,11 @@
 import React, { useEffect, useState } from 'react';
 import { apiFetch } from '../utils/api';
+import { CreateGroupModal } from './CreateGroupModal';
 
 interface Group {
   id: number;
   name: string;
-  description?: string;
+  content?: string;
 }
 
 interface JoinStatus {
@@ -14,12 +15,19 @@ interface JoinStatus {
   isError: boolean;
 }
 
-export const GroupList: React.FC = () => {
+interface GroupListProps {
+  onSelectGroup?: (groupId: number) => void;
+  activeGroupId?: number | null;
+}
+
+export const GroupList: React.FC<GroupListProps> = ({ onSelectGroup, activeGroupId }) => {
   const [groups, setGroups] = useState<Group[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
   
   const [joinStatus, setJoinStatus] = useState<JoinStatus | null>(null);
+  const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+  const [refreshTrigger, setRefreshTrigger] = useState(0);
 
   useEffect(() => {
     const fetchGroups = async () => {
@@ -41,7 +49,7 @@ export const GroupList: React.FC = () => {
     };
 
     fetchGroups();
-  }, []);
+  }, [refreshTrigger]);
 
   const handleJoin = async (groupId: number) => {
     // Aynı anda sadece tek bir gruba işlem durumunu tutuyoruz
@@ -95,10 +103,29 @@ export const GroupList: React.FC = () => {
   }
 
   return (
-    <div className="w-full max-w-6xl mx-auto p-4 sm:p-6 lg:p-8">
-      <h3 className="text-3xl font-extrabold mb-8 text-slate-100 tracking-tight">
-        Grupları Keşfet
-      </h3>
+    <div className="w-full max-w-6xl mx-auto p-4 sm:p-6 lg:p-8 animate-fade-in-up">
+      <div className="flex justify-between items-center mb-8">
+        <h3 className="text-3xl font-extrabold text-slate-100 tracking-tight">
+          Gruplar
+        </h3>
+        <button
+          onClick={() => setIsCreateModalOpen(true)}
+          className="bg-[#b026ff] text-white px-6 py-2.5 rounded-xl font-bold hover:bg-[#c455ff] transition-all shadow-lg hover:shadow-[#b026ff]/50"
+        >
+          + Yeni Grup
+        </button>
+      </div>
+      
+      {isCreateModalOpen && (
+        <CreateGroupModal 
+          onClose={() => setIsCreateModalOpen(false)}
+          onSuccess={() => {
+            setIsCreateModalOpen(false);
+            setRefreshTrigger(prev => prev + 1);
+            alert("Grup oluşturma isteği alındı. Onay bekleniyor.");
+          }}
+        />
+      )}
       
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
         {groups.map((group) => {
@@ -107,13 +134,18 @@ export const GroupList: React.FC = () => {
           return (
             <div 
               key={group.id} 
-              className="flex flex-col p-6 bg-slate-900 border border-slate-800 rounded-2xl hover:border-slate-700 hover:shadow-[0_4px_25px_rgba(0,240,255,0.08)] transition-all h-full"
+              className={`flex flex-col p-6 bg-slate-900 border ${activeGroupId === group.id ? 'border-[#00f0ff] shadow-[0_0_15px_rgba(0,240,255,0.2)]' : 'border-slate-800 hover:border-slate-700 hover:shadow-[0_4px_25px_rgba(0,240,255,0.08)]'} rounded-2xl transition-all h-full relative`}
             >
-              <div className="flex-1">
-                <h4 className="text-2xl font-bold text-[#00f0ff] mb-3 drop-shadow-glow-blue">{group.name}</h4>
-                {group.description ? (
+              <div className="flex-1 cursor-pointer" onClick={() => onSelectGroup && onSelectGroup(group.id)}>
+                <h4 className="text-2xl font-bold text-[#00f0ff] mb-3 drop-shadow-glow-blue flex items-center justify-between">
+                  {group.name}
+                  {activeGroupId === group.id && (
+                    <span className="text-xs bg-[#00f0ff]/20 text-[#00f0ff] px-2 py-1 rounded-full">Aktif</span>
+                  )}
+                </h4>
+                {group.content ? (
                   <p className="text-slate-400 text-sm leading-relaxed mb-4 line-clamp-3">
-                    {group.description}
+                    {group.content}
                   </p>
                 ) : (
                   <p className="text-slate-600 text-sm italic mb-4">Açıklama bulunmuyor.</p>

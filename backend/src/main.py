@@ -225,10 +225,14 @@ async def log_request(request: Request) -> None:
 
 @app.middleware("response")
 async def handle_cors_and_log_response(request: Request, response: HTTPResponse) -> HTTPResponse:
-    """Giden her HTTP yanıtını loglar ve eksik CORS başlıklarını tamamlar."""
-    if "Access-Control-Allow-Headers" not in response.headers:
-        response.headers["Access-Control-Allow-Headers"] = "Authorization, Content-Type, Accept, Origin"
-    
+    """Giden her HTTP yanıtına CORS başlıklarını ekler ve loglar."""
+    # CORS Başlıklarını zorla ekle
+    origin = request.headers.get("Origin", "*")
+    response.headers["Access-Control-Allow-Origin"] = origin
+    response.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, PATCH, DELETE, OPTIONS"
+    response.headers["Access-Control-Allow-Headers"] = "Authorization, Content-Type, Accept, Origin, X-Requested-With"
+    response.headers["Access-Control-Allow-Credentials"] = "true"
+
     logger.info(
         "http.response",
         method=request.method,
