@@ -41,11 +41,11 @@ from src.models import (
     ReportStatus,
     User,
 )
+from src.services.common import get_active_user, detect_mime
 from src.routes.expenses import (
     ALLOWED_MIME_TYPES,
     EXTENSION_TO_MIME,
     MAX_RECEIPT_SIZE,
-    _detect_mime,
     _save_receipt,
 )
 from src.services.security import protected, role_required
@@ -59,52 +59,6 @@ admin_bp = Blueprint("admin", url_prefix="/api/admin")
 # Pydantic Şemaları
 # =============================================================================
 
-class AdminUpdateUserRequest(BaseModel):
-    name: str | None = None
-    surname: str | None = None
-    age: int | None = None
-    phone_number: str | None = None
-    birthday: str | None = None
-
-    @field_validator("name", "surname")
-    @classmethod
-    def strip_and_check_empty(cls, v: str | None) -> str | None:
-        if v is not None:
-            v = v.strip()
-            if not v:
-                raise ValueError("Bu alan boş olamaz.")
-            if len(v) > 100:
-                raise ValueError("Bu alan en fazla 100 karakter olabilir.")
-        return v
-
-    @field_validator("age")
-    @classmethod
-    def validate_age(cls, v: int | None) -> int | None:
-        if v is not None and (v < 13 or v > 120):
-            raise ValueError("Yaş 13 ile 120 arasında olmalıdır.")
-        return v
-
-    @field_validator("phone_number")
-    @classmethod
-    def validate_phone(cls, v: str | None) -> str | None:
-        if v is None:
-            return v
-        v = v.strip()
-        if not v.startswith("+") or not v[1:].isdigit():
-            raise ValueError("Telefon numarası uluslararası formatta olmalıdır. Örn: +905551234567")
-        if len(v) < 10 or len(v) > 16:
-            raise ValueError("Telefon numarası 10-16 karakter arasında olmalıdır.")
-        return v
-
-    @field_validator("birthday")
-    @classmethod
-    def validate_birthday(cls, v: str | None) -> str | None:
-        if v is not None:
-            try:
-                date.fromisoformat(v)
-            except ValueError:
-                raise ValueError("Doğum tarihi YYYY-MM-DD formatında olmalıdır.")
-        return v
 
 
 # =============================================================================
@@ -641,7 +595,7 @@ async def add_expense_on_behalf(
             if ext not in EXTENSION_TO_MIME:
                 raise BadRequest(f"Geçersiz uzantı: {ext}")
 
-            mime = _detect_mime(body)
+            mime = detect_mime(body)
             if not mime or mime not in ALLOWED_MIME_TYPES:
                 raise BadRequest("Geçersiz dosya formatı. JPEG, PNG, GIF veya WebP gönderin.")
 
@@ -800,14 +754,10 @@ async def admin_update_user(request: Request, user_id: int) -> HTTPResponse:
     admin_id: int = int(request.ctx.user["sub"])
     body = request.json or {}
 
-    if not body:
-        raise BadRequest("Güncellenecek alanlar (JSON formatında) gereklidir.")
-
     try:
-        data = AdminUpdateUserRequest.model_validate(body)
+        data = BaseUserUpdateSchema.model_validate(body)
     except ValidationError as exc:
-        errors = [{"field": e["loc"][0] if e["loc"] else "unknown", "message": e["msg"]} for e in exc.errors()]
-        raise BadRequest(f"Validasyon hatası: {errors}")
+        raise BadRequest(f"Validasyon hatası: {exc.errors()}")
 
     async with get_session() as session:
         stmt = select(User).where(User.id == user_id, User.deleted_at.is_(None))

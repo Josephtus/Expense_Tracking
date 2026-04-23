@@ -5,6 +5,8 @@ interface Group {
   id: number;
   name: string;
   content?: string;
+  role?: 'GROUP_LEADER' | 'USER';
+  is_approved?: boolean;
 }
 
 interface JoinStatus {
@@ -15,7 +17,7 @@ interface JoinStatus {
 }
 
 interface GroupListProps {
-  onSelectGroup?: (groupId: number, groupName: string) => void;
+  onSelectGroup?: (groupId: number, groupName: string, role: string, isApproved: boolean) => void;
   activeGroupId?: number | null;
   refreshTrigger?: number;
 }
@@ -115,15 +117,31 @@ export const GroupList: React.FC<GroupListProps> = ({ onSelectGroup, activeGroup
           return (
             <div 
               key={group.id} 
-              className={`flex flex-col p-6 bg-slate-900 border ${activeGroupId === group.id ? 'border-[#00f0ff] shadow-[0_0_15px_rgba(0,240,255,0.2)]' : 'border-slate-800 hover:border-slate-700 hover:shadow-[0_4px_25px_rgba(0,240,255,0.08)]'} rounded-2xl transition-all h-full relative`}
+              className={`flex flex-col p-6 bg-slate-900 border ${activeGroupId === group.id ? 'border-[#00f0ff] shadow-[0_0_15px_rgba(0,240,255,0.2)]' : 'border-slate-800 hover:border-slate-700 hover:shadow-[0_4px_25px_rgba(0,240,255,0.08)]'} rounded-2xl transition-all h-full relative group`}
             >
-              <div className="flex-1 cursor-pointer" onClick={() => onSelectGroup && onSelectGroup(group.id, group.name)}>
-                <h4 className="text-2xl font-bold text-[#00f0ff] mb-3 drop-shadow-glow-blue flex items-center justify-between">
-                  {group.name}
-                  {activeGroupId === group.id && (
-                    <span className="text-xs bg-[#00f0ff]/20 text-[#00f0ff] px-2 py-1 rounded-full">Aktif</span>
+              <div className="flex-1 cursor-pointer" onClick={() => onSelectGroup && onSelectGroup(group.id, group.name, group.role || 'USER', group.is_approved || false)}>
+                <div className="flex justify-between items-start mb-2">
+                  <h4 className="text-2xl font-bold text-[#00f0ff] drop-shadow-glow-blue">
+                    {group.name}
+                  </h4>
+                  {group.role && (
+                    <span className={`text-[10px] px-2 py-0.5 rounded font-black uppercase tracking-tighter ${group.role === 'GROUP_LEADER' ? 'bg-amber-500/20 text-amber-500' : 'bg-blue-500/20 text-blue-500'}`}>
+                      {group.role === 'GROUP_LEADER' ? 'LİDER' : 'ÜYE'}
+                    </span>
                   )}
-                </h4>
+                </div>
+                
+                <div className="flex gap-2 mb-3">
+                  {activeGroupId === group.id && (
+                    <span className="text-[10px] bg-[#00f0ff]/20 text-[#00f0ff] px-2 py-0.5 rounded-full font-bold">Aktif</span>
+                  )}
+                  {group.role && (
+                    <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${group.is_approved ? 'bg-emerald-500/20 text-emerald-500' : 'bg-orange-500/20 text-orange-500'}`}>
+                      {group.is_approved ? 'Onaylı' : 'Onay Bekliyor'}
+                    </span>
+                  )}
+                </div>
+
                 {group.content ? (
                   <p className="text-slate-400 text-sm leading-relaxed mb-4 line-clamp-3">
                     {group.content}
@@ -134,7 +152,6 @@ export const GroupList: React.FC<GroupListProps> = ({ onSelectGroup, activeGroup
               </div>
               
               <div className="mt-4 pt-5 border-t border-slate-800">
-                {/* İstek durumu mesajı (Başarılı / Hata) */}
                 {status && status.message && (
                   <div 
                     className={`text-sm mb-4 text-center p-2.5 rounded-lg font-medium animate-fade-in-up ${
@@ -147,13 +164,22 @@ export const GroupList: React.FC<GroupListProps> = ({ onSelectGroup, activeGroup
                   </div>
                 )}
                 
-                <button
-                  onClick={() => handleJoin(group.id)}
-                  disabled={status?.loading}
-                  className="w-full py-3 rounded-xl font-bold bg-slate-800 text-[#00f0ff] hover:bg-[#00f0ff] hover:text-slate-900 transition-all border border-[#00f0ff]/30 hover:shadow-[0_0_15px_rgba(0,240,255,0.4)] disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  {status?.loading ? 'İstek Gönderiliyor...' : 'Gruba Katıl'}
-                </button>
+                {!group.role ? (
+                  <button
+                    onClick={() => handleJoin(group.id)}
+                    disabled={status?.loading}
+                    className="w-full py-3 rounded-xl font-bold bg-slate-800 text-[#00f0ff] hover:bg-[#00f0ff] hover:text-slate-900 transition-all border border-[#00f0ff]/30 hover:shadow-[0_0_15px_rgba(0,240,255,0.4)] disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {status?.loading ? 'İstek Gönderiliyor...' : 'Gruba Katıl'}
+                  </button>
+                ) : (
+                  <button
+                    onClick={() => onSelectGroup && onSelectGroup(group.id, group.name, group.role || 'USER', group.is_approved || false)}
+                    className="w-full py-3 rounded-xl font-bold bg-[#00f0ff]/10 text-[#00f0ff] border border-[#00f0ff]/30 hover:bg-[#00f0ff] hover:text-slate-900 transition-all"
+                  >
+                    Gruba Git
+                  </button>
+                )}
               </div>
             </div>
           );

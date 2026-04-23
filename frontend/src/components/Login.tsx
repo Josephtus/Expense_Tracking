@@ -29,7 +29,7 @@ export const Login: React.FC<LoginProps> = ({ onLoginSuccess, onSwitchToRegister
       
     } catch (err: any) {
       console.error("Login hatası:", err);
-      setError("Giriş sırasında bir hata oluştu.");
+      setError(err.message || "Giriş sırasında bir hata oluştu.");
     } finally {
       setLoading(false);
     }

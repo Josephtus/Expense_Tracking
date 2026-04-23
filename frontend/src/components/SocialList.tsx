@@ -11,8 +11,10 @@ interface UserProfile {
 export const SocialList: React.FC<{ currentUserId: number | null }> = ({ currentUserId }) => {
   const [followers, setFollowers] = useState<UserProfile[]>([]);
   const [following, setFollowing] = useState<UserProfile[]>([]);
-  const [targetUserId, setTargetUserId] = useState('');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchResults, setSearchResults] = useState<UserProfile[]>([]);
   const [loading, setLoading] = useState(true);
+  const [searchLoading, setSearchLoading] = useState(false);
   const [message, setMessage] = useState<{ text: string, type: 'error' | 'success' } | null>(null);
 
   const fetchSocialData = async () => {
@@ -40,19 +42,31 @@ export const SocialList: React.FC<{ currentUserId: number | null }> = ({ current
     fetchSocialData();
   }, [currentUserId]);
 
-  const handleFollow = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setMessage(null);
-    if (!targetUserId) return;
-
+  const handleSearch = async () => {
+    if (searchQuery.length < 2) return;
     try {
-      const response = await apiFetch(`/social/follow/${targetUserId}`, { method: 'POST' });
+      setSearchLoading(true);
+      const res = await apiFetch(`/users/search?q=${encodeURIComponent(searchQuery)}`);
+      const data = await res.json();
+      setSearchResults(data.data);
+    } catch (err) {
+      console.error("Arama yapılamadı", err);
+    } finally {
+      setSearchLoading(false);
+    }
+  };
+
+  const handleFollow = async (id: number) => {
+    setMessage(null);
+    try {
+      const response = await apiFetch(`/social/follow/${id}`, { method: 'POST' });
       const data = await response.json();
       setMessage({ text: data.message, type: 'success' });
-      setTargetUserId('');
+      setSearchResults([]);
+      setSearchQuery('');
       fetchSocialData();
     } catch (err: any) {
-      setMessage({ text: "Takip işlemi başarısız. Kullanıcı bulunamadı veya zaten takip ediliyor.", type: 'error' });
+      setMessage({ text: "Takip işlemi başarısız.", type: 'error' });
     }
   };
 
@@ -69,25 +83,57 @@ export const SocialList: React.FC<{ currentUserId: number | null }> = ({ current
 
   return (
     <div className="flex flex-col gap-6 animate-fade-in-up">
-      {/* Follow New User */}
+      {/* Search and Follow */}
       <div className="bg-slate-900 border border-slate-800 p-6 rounded-2xl shadow-xl drop-shadow-glow-blue relative overflow-hidden">
-        <h3 className="text-xl font-bold text-slate-100 mb-4">Yeni Kişi Takip Et</h3>
-        <form onSubmit={handleFollow} className="flex gap-4">
-          <input 
-            type="number"
-            value={targetUserId}
-            onChange={(e) => setTargetUserId(e.target.value)}
-            placeholder="Kullanıcı ID girin"
-            className="flex-1 bg-slate-950 border border-slate-700 rounded-xl px-4 py-2 text-slate-200 focus:outline-none focus:border-[#00f0ff] focus:ring-1 focus:ring-[#00f0ff] transition-all"
-            required
-          />
-          <button 
-            type="submit"
-            className="bg-slate-800 text-[#00f0ff] border border-[#00f0ff]/50 px-6 py-2 rounded-xl font-bold hover:bg-[#00f0ff]/10 hover:border-[#00f0ff] transition-all shadow-lg hover:shadow-[#00f0ff]/20"
-          >
-            Takip Et
-          </button>
-        </form>
+        <h3 className="text-xl font-bold text-slate-100 mb-4">Kişi Bul & Takip Et</h3>
+        <div className="flex flex-col gap-4">
+          <div className="flex gap-4">
+            <input 
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
+              placeholder="İsim veya e-posta ile ara..."
+              className="flex-1 bg-slate-950 border border-slate-700 rounded-xl px-4 py-2 text-slate-200 focus:outline-none focus:border-[#00f0ff] focus:ring-1 focus:ring-[#00f0ff] transition-all"
+            />
+            <button 
+              onClick={handleSearch}
+              disabled={searchLoading}
+              className="bg-slate-800 text-[#00f0ff] border border-[#00f0ff]/50 px-6 py-2 rounded-xl font-bold hover:bg-[#00f0ff]/10 hover:border-[#00f0ff] transition-all shadow-lg hover:shadow-[#00f0ff]/20"
+            >
+              {searchLoading ? 'Aranıyor...' : 'Ara'}
+            </button>
+          </div>
+
+          {searchResults.length > 0 && (
+            <div className="mt-4 border-t border-slate-800 pt-4">
+              <h4 className="text-sm font-semibold text-slate-400 mb-3">Arama Sonuçları</h4>
+              <div className="flex flex-col gap-2">
+                {searchResults.map(user => (
+                  <div key={user.id} className="flex items-center justify-between p-3 rounded-xl bg-slate-800/30 border border-slate-700/50">
+                    <div className="flex items-center gap-3">
+                      <div className="w-8 h-8 rounded-full bg-slate-700 overflow-hidden flex items-center justify-center">
+                        {user.profile_photo ? (
+                          <img src={`http://localhost:8000${user.profile_photo}`} alt={user.name} className="w-full h-full object-cover" />
+                        ) : (
+                          <span className="text-slate-400 text-xs font-bold">{user.name.charAt(0)}</span>
+                        )}
+                      </div>
+                      <span className="text-slate-200 text-sm font-medium">{user.name} {user.surname}</span>
+                    </div>
+                    <button 
+                      onClick={() => handleFollow(user.id)}
+                      className="text-xs font-bold text-[#00f0ff] hover:underline"
+                    >
+                      Takip Et
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+
         {message && (
           <div className={`mt-4 p-3 rounded-lg text-sm border ${message.type === 'error' ? 'bg-red-900/40 border-red-500/50 text-red-200' : 'bg-green-900/40 border-green-500/50 text-green-200'}`}>
             {message.text}

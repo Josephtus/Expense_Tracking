@@ -91,6 +91,25 @@ export const GroupChat: React.FC<GroupChatProps> = ({ groupId, currentUserId }) 
     setInputText('');
   };
 
+  const handleReport = async (messageId: number) => {
+    const aciklama = prompt("Lütfen şikayet nedeninizi açıklayın (min 10 karakter):");
+    if (!aciklama || aciklama.length < 10) {
+      alert("Şikayet açıklaması en az 10 karakter olmalıdır.");
+      return;
+    }
+
+    try {
+      const response = await apiFetch(`/reports/message/${messageId}`, {
+        method: 'POST',
+        body: JSON.stringify({ aciklama })
+      });
+      const data = await response.json();
+      alert(data.message || "Şikayetiniz başarıyla iletildi.");
+    } catch (err) {
+      alert("Şikayet gönderilemedi.");
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex justify-center items-center h-64 bg-slate-900 rounded-2xl border border-slate-800 animate-pulse">
@@ -115,10 +134,21 @@ export const GroupChat: React.FC<GroupChatProps> = ({ groupId, currentUserId }) 
         {messages.map((msg, idx) => {
           const isMe = currentUserId != null && msg.sender_id === currentUserId;
           return (
-            <div key={idx} className={`flex flex-col ${isMe ? 'items-end' : 'items-start'}`}>
-              <span className="text-xs text-slate-500 font-semibold ml-1 mb-1">
-                {isMe ? 'Sen' : `Kullanıcı ${msg.sender_id}`}
-              </span>
+            <div key={idx} className={`flex flex-col ${isMe ? 'items-end' : 'items-start'} group/msg`}>
+              <div className="flex items-center gap-2 mb-1 px-1">
+                {!isMe && (
+                  <button 
+                    onClick={() => handleReport(msg.id)}
+                    className="opacity-0 group-hover/msg:opacity-100 p-1 text-slate-500 hover:text-red-400 transition-all"
+                    title="Mesajı Şikayet Et"
+                  >
+                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
+                  </button>
+                )}
+                <span className="text-xs text-slate-500 font-semibold">
+                  {isMe ? 'Sen' : `Kullanıcı ${msg.sender_id}`}
+                </span>
+              </div>
               <div className={`px-4 py-2 rounded-2xl text-slate-200 border max-w-[80%] shadow-md ${
                 isMe ? 'bg-[#b026ff]/20 border-[#b026ff]/30 rounded-tr-sm' : 'bg-slate-800 border-slate-700 rounded-tl-sm'
               }`}>
