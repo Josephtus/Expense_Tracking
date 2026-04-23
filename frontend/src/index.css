@@ -1,0 +1,15 @@
+@import "tailwindcss";
+
+@theme {
+  --color-neon-purple: #b026ff;
+  --color-neon-blue: #00f0ff;
+}
+
+@layer utilities {
+  .drop-shadow-glow-purple {
+    filter: drop-shadow(0 0 10px rgba(176, 38, 255, 0.7));
+  }
+  .drop-shadow-glow-blue {
+    filter: drop-shadow(0 0 10px rgba(0, 240, 255, 0.7));
+  }
+}
