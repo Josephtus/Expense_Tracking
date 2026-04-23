@@ -267,16 +267,22 @@ app.static(
 
 
 # =============================================================================
-# BLUEPRINT KAYDI — Routes (Görev 4'te doldurulacak)
+# BLUEPRINT KAYDI
+# Yeni route dosyaları oluşturuldukça aşağıya eklenir.
 # =============================================================================
-# from src.routes.auth import auth_bp
+
+# ── Görev 4: Kimlik Doğrulama ──────────────────────────────────────────────
+from src.routes.auth import auth_bp          # noqa: E402
+
+app.blueprint(auth_bp)
+
+# ── Görev 5 ve sonrası (dosyalar oluşturulduğunda aktif edilecek) ───────────
 # from src.routes.users import users_bp
 # from src.routes.groups import groups_bp
 # from src.routes.expenses import expenses_bp
 # from src.routes.messages import messages_bp
 # from src.routes.admin import admin_bp
 
-# app.blueprint(auth_bp)
 # app.blueprint(users_bp)
 # app.blueprint(groups_bp)
 # app.blueprint(expenses_bp)
