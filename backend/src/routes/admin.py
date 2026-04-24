@@ -144,10 +144,13 @@ async def list_users(request: Request) -> HTTPResponse:
     except (ValueError, TypeError):
         page, limit = 1, 20
 
+    sort_field = request.args.get("sort", "id")
+    sort_order = request.args.get("order", "desc").lower()
+
     offset = (page - 1) * limit
 
     async with get_session() as session:
-        from sqlalchemy import or_, func
+        from sqlalchemy import or_, func, asc, desc
         from sqlalchemy.orm import selectinload
         from src.models import GroupMember, GroupMemberRole, Group
 
@@ -183,7 +186,14 @@ async def list_users(request: Request) -> HTTPResponse:
                 )
             )
 
-        stmt = stmt.order_by(User.id.desc()).offset(offset).limit(limit)
+        # Dinamik Sıralama
+        order_attr = getattr(User, sort_field, User.id)
+        if sort_order == "asc":
+            stmt = stmt.order_by(asc(order_attr))
+        else:
+            stmt = stmt.order_by(desc(order_attr))
+
+        stmt = stmt.offset(offset).limit(limit)
         users = list(await session.scalars(stmt))
         
         data = []
@@ -344,10 +354,11 @@ async def approve_group(request: Request, group_id: int) -> HTTPResponse:
 async def list_groups(request: Request) -> HTTPResponse:
     """
     Sistemdeki tüm grupları (onaylı ve onay bekleyen) listeler.
-    Query Params:
-        page: Sayfa numarası (default 1)
-        limit: Sayfa başına kayıt sayısı (default 20)
     """
+    search_query = request.args.get("q", "").strip()
+    sort_field = request.args.get("sort", "created_at")
+    sort_order = request.args.get("order", "desc").lower()
+
     try:
         page = max(1, int(request.args.get("page", 1)))
         limit = min(100, max(1, int(request.args.get("limit", 20))))
@@ -357,21 +368,51 @@ async def list_groups(request: Request) -> HTTPResponse:
     offset = (page - 1) * limit
 
     async with get_session() as session:
-        from sqlalchemy import func
+        from sqlalchemy import func, or_, asc, desc
         
-        # Toplam sayıyı al
+        # Base count statement
         count_stmt = select(func.count(Group.id))
+        if search_query:
+            count_stmt = count_stmt.where(
+                or_(
+                    Group.name.ilike(f"%{search_query}%"),
+                    Group.content.ilike(f"%{search_query}%")
+                )
+            )
         total_count = await session.scalar(count_stmt) or 0
 
-        # Grup ve üye sayısını birlikte çek
+        # Base data statement
         stmt = (
             select(Group, func.count(GroupMember.id).label("member_count"))
             .outerjoin(GroupMember, GroupMember.group_id == Group.id)
             .group_by(Group.id)
-            .order_by(Group.created_at.desc())
-            .offset(offset)
-            .limit(limit)
         )
+
+        if search_query:
+            stmt = stmt.where(
+                or_(
+                    Group.name.ilike(f"%{search_query}%"),
+                    Group.content.ilike(f"%{search_query}%")
+                )
+            )
+
+        # Dynamic Sorting
+        valid_sort_fields = {
+            "id": Group.id,
+            "name": Group.name,
+            "is_approved": Group.is_approved,
+            "created_at": Group.created_at,
+            "member_count": "member_count"
+        }
+        
+        order_attr = valid_sort_fields.get(sort_field, Group.created_at)
+
+        if sort_order == "asc":
+            stmt = stmt.order_by(asc(order_attr))
+        else:
+            stmt = stmt.order_by(desc(order_attr))
+
+        stmt = stmt.offset(offset).limit(limit)
         results = await session.execute(stmt)
         
         data = []
@@ -390,6 +431,78 @@ async def list_groups(request: Request) -> HTTPResponse:
             "page": page,
             "limit": limit,
             "total_count": total_count
+        }, status=200)
+
+
+# =============================================================================
+# ENDPOINT 2.6: GET /api/admin/groups/<group_id>/details — Grup Detayları
+# =============================================================================
+
+@admin_bp.get("/groups/<group_id:int>/details")
+@protected
+@role_required(GlobalRole.ADMIN)
+async def get_group_details(request: Request, group_id: int) -> HTTPResponse:
+    """
+    Belirli bir grubun tüm verilerini (harcamalar, üyeler, mesajlar) döner.
+    """
+    async with get_session() as session:
+        from src.models import Expense, GroupMember, Message
+        
+        # Grubu kontrol et
+        group = await session.get(Group, group_id)
+        if not group:
+            return sanic_json({"error": "Grup bulunamadı."}, status=404)
+
+        # Harcamaları al
+        exp_stmt = select(Expense).where(Expense.group_id == group_id).order_by(Expense.date.desc())
+        expenses = list(await session.scalars(exp_stmt))
+        
+        # Üyeleri al
+        mem_stmt = (
+            select(GroupMember, User)
+            .join(User, GroupMember.user_id == User.id)
+            .where(GroupMember.group_id == group_id)
+        )
+        mem_results = await session.execute(mem_stmt)
+        members = []
+        for gm, u in mem_results:
+            members.append({
+                "id": gm.id,
+                "user_id": u.id,
+                "name": u.name,
+                "surname": u.surname,
+                "mail": u.mail,
+                "role": gm.role,
+                "is_approved": gm.is_approved
+            })
+
+        # Mesajları al
+        msg_stmt = (
+            select(Message, User)
+            .join(User, Message.user_id == User.id)
+            .where(Message.group_id == group_id)
+            .order_by(Message.timestamp.desc())
+            .limit(100)
+        )
+        msg_results = await session.execute(msg_stmt)
+        messages = []
+        for m, u in msg_results:
+            messages.append({
+                "id": m.id,
+                "sender_name": f"{u.name} {u.surname}",
+                "message_text": m.message_text,
+                "timestamp": m.timestamp.isoformat()
+            })
+
+        return sanic_json({
+            "expenses": [{
+                "id": e.id,
+                "amount": e.amount,
+                "content": e.content,
+                "date": e.date.isoformat()
+            } for e in expenses],
+            "members": members,
+            "messages": messages
         }, status=200)
 
 
