@@ -177,11 +177,14 @@ export const Dashboard: React.FC = () => {
 
             <div className="flex items-center gap-4 pl-6 border-l border-white/10">
               <div className="hidden sm:block text-right">
-                <p className="text-sm font-black text-white leading-none mb-1">{user?.name} {user?.surname}</p>
-                <p className="text-[9px] text-[#00f0ff] font-black uppercase tracking-widest">{user?.role}</p>
+                <p className="text-sm font-black text-white leading-none mb-1">{user?.name}</p>
+                <p className="text-[9px] text-[#00f0ff] font-black uppercase tracking-widest">Hoş geldin!</p>
               </div>
               <div className="relative group">
-                <div className="w-10 h-10 rounded-2xl bg-white/5 border border-white/10 flex items-center justify-center overflow-hidden group-hover:border-[#b026ff]/50 transition-all cursor-pointer">
+                <div 
+                  onClick={() => setActiveTab('Profil')}
+                  className="w-10 h-10 rounded-2xl bg-white/5 border border-white/10 flex items-center justify-center overflow-hidden group-hover:border-[#00f0ff] transition-all cursor-pointer"
+                >
                   {user?.profile_photo ? (
                     <img src={getImageUrl(user.profile_photo)} alt="User" className="w-full h-full object-cover" />
                   ) : (
