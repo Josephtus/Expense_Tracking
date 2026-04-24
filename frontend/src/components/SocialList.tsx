@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { apiFetch } from '../utils/api';
+import { apiFetch, getImageUrl } from '../utils/api';
 import { UserProfileModal } from './UserProfileModal';
 
 interface UserProfile {
@@ -26,7 +26,7 @@ export const SocialList: React.FC<{ currentUserId: number | null, activeGroupId:
       const res = await apiFetch(`/groups/${activeGroupId}/invite/${targetUserId}`, { method: 'POST' });
       const data = await res.json();
       setMessage({ text: data.message, type: 'success' });
-    } catch (err: any) {
+    } catch (err) {
       setMessage({ text: "Davet gönderilemedi. Kullanıcı zaten üye olabilir.", type: 'error' });
     }
   };
@@ -79,7 +79,7 @@ export const SocialList: React.FC<{ currentUserId: number | null, activeGroupId:
       setSearchResults([]);
       setSearchQuery('');
       fetchSocialData();
-    } catch (err: any) {
+    } catch (err) {
       setMessage({ text: "Takip işlemi başarısız.", type: 'error' });
     }
   };
@@ -128,7 +128,7 @@ export const SocialList: React.FC<{ currentUserId: number | null, activeGroupId:
                     <div className="flex items-center gap-3 cursor-pointer group" onClick={() => setSelectedUserId(user.id)}>
                       <div className="w-8 h-8 rounded-full bg-slate-700 overflow-hidden flex items-center justify-center group-hover:ring-2 group-hover:ring-[#00f0ff]/50 transition-all">
                         {user.profile_photo ? (
-                          <img src={`http://localhost:8000${user.profile_photo}`} alt={user.name} className="w-full h-full object-cover" />
+                          <img src={getImageUrl(user.profile_photo) || ''} alt={user.name} className="w-full h-full object-cover" />
                         ) : (
                           <span className="text-slate-400 text-xs font-bold">{user.name.charAt(0)}</span>
                         )}
@@ -180,7 +180,7 @@ export const SocialList: React.FC<{ currentUserId: number | null, activeGroupId:
                   <div className="flex items-center gap-3 cursor-pointer group" onClick={() => setSelectedUserId(user.id)}>
                     <div className="w-10 h-10 rounded-full bg-slate-700 overflow-hidden flex items-center justify-center group-hover:ring-2 group-hover:ring-[#00f0ff]/50 transition-all">
                       {user.profile_photo ? (
-                        <img src={`http://localhost:8000${user.profile_photo}`} alt={user.name} className="w-full h-full object-cover" />
+                        <img src={getImageUrl(user.profile_photo) || ''} alt={user.name} className="w-full h-full object-cover" />
                       ) : (
                         <span className="text-slate-400 font-bold">{user.name.charAt(0)}</span>
                       )}
@@ -225,7 +225,7 @@ export const SocialList: React.FC<{ currentUserId: number | null, activeGroupId:
                 <div key={user.id} className="flex items-center gap-3 p-3 rounded-xl bg-slate-800/50 border border-slate-700 cursor-pointer group" onClick={() => setSelectedUserId(user.id)}>
                   <div className="w-10 h-10 rounded-full bg-slate-700 overflow-hidden flex items-center justify-center border border-[#b026ff]/30 group-hover:ring-2 group-hover:ring-[#00f0ff]/50 transition-all">
                     {user.profile_photo ? (
-                      <img src={`http://localhost:8000${user.profile_photo}`} alt={user.name} className="w-full h-full object-cover" />
+                      <img src={getImageUrl(user.profile_photo) || ''} alt={user.name} className="w-full h-full object-cover" />
                     ) : (
                       <span className="text-slate-400 font-bold">{user.name.charAt(0)}</span>
                     )}

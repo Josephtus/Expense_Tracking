@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { apiFetch } from '../utils/api';
+import { apiFetch, getImageUrl } from '../utils/api';
 import { ExpenseForm } from './ExpenseForm';
 import { ExpenseList } from './ExpenseList';
 import { GroupList } from './GroupList';
@@ -123,7 +123,7 @@ export const Dashboard: React.FC = () => {
                 </div>
                 {user?.profile_photo ? (
                   <img 
-                    src={`http://localhost:8000${user.profile_photo.startsWith('/') ? user.profile_photo : '/' + user.profile_photo}`} 
+                    src={getImageUrl(user.profile_photo) || ''} 
                     alt="Avatar" 
                     className="w-8 h-8 rounded-full object-cover border border-[#b026ff] shadow-[0_0_5px_rgba(176,38,255,0.3)]"
                   />
