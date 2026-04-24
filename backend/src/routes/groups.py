@@ -248,6 +248,7 @@ async def list_groups(request: Request) -> HTTPResponse:
     Responses:
         200 → Onaylı grupların listesi (pagination ile)
     """
+    joined_only = request.args.get("joined") == "true"
     # Basit pagination
     try:
         page = max(1, int(request.args.get("page", 1)))
@@ -279,6 +280,9 @@ async def list_groups(request: Request) -> HTTPResponse:
         
         if query:
             stmt = stmt.where(Group.name.ilike(f"%{query}%"))
+            
+        if joined_only:
+            stmt = stmt.where(GroupMember.id.isnot(None))
             
         # Öncelik: Üyesi olduğu gruplar en üstte, sonra en yeni gruplar
         stmt = stmt.order_by(

@@ -12,8 +12,9 @@ import { AdminPanel } from './admin/AdminPanel';
 import { CreateGroupModal } from './CreateGroupModal';
 import { GroupManagement } from './GroupManagement';
 import { GroupMembers } from './GroupMembers';
+import { Home } from './Home';
 
-type TabType = 'Gruplar' | 'Sosyal' | 'Profil' | 'Şikayet' | 'Admin';
+type TabType = 'Ana Sayfa' | 'Gruplar' | 'Sosyal' | 'Profil' | 'Şikayet' | 'Admin';
 type GroupSubTabType = 'Harcamalar' | 'Borç Durumu' | 'Sohbet' | 'Üyeler' | 'Yönetim';
 
 export const Dashboard: React.FC = () => {
@@ -29,7 +30,7 @@ export const Dashboard: React.FC = () => {
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [refreshTrigger, setRefreshTrigger] = useState(0);
 
-  const [activeTab, setActiveTab] = useState<TabType>('Gruplar');
+  const [activeTab, setActiveTab] = useState<TabType>('Ana Sayfa');
   const [activeSubTab, setActiveSubTab] = useState<GroupSubTabType>('Harcamalar');
 
   const fetchUser = async () => {
@@ -80,7 +81,7 @@ export const Dashboard: React.FC = () => {
   }
 
   // Dinamik sekmeler (Sadece ana kategoriler)
-  const navTabs: TabType[] = ['Gruplar', 'Sosyal', 'Profil', 'Şikayet'];
+  const navTabs: TabType[] = ['Ana Sayfa', 'Gruplar', 'Sosyal', 'Profil', 'Şikayet'];
   
   if (user?.role?.toLowerCase() === 'admin') {
     navTabs.unshift('Admin');
@@ -157,6 +158,15 @@ export const Dashboard: React.FC = () => {
 
       <main className="max-w-[1600px] mx-auto px-4 sm:px-6 lg:px-8 py-10">
         
+        {activeTab === 'Ana Sayfa' && <Home user={user} onSelectGroup={(id, name, role, isApproved) => {
+          setActiveGroupId(id);
+          setActiveGroupName(name);
+          setActiveGroupRole(role);
+          setIsActiveGroupApproved(isApproved);
+          setActiveTab('Gruplar');
+          setActiveSubTab('Harcamalar');
+        }} />}
+
         {activeTab === 'Gruplar' && (
           <div className="space-y-8">
             {!activeGroupId ? (
