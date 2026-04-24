@@ -1,60 +1,46 @@
-import React, { useEffect, useState } from 'react';
-import { apiFetch } from '../utils/api';
-
-interface UserProfile {
-  id: number;
-  mail?: string;
-  name?: string;
-  surname?: string;
-  phone_number?: string;
-  age?: number;
-  birthday?: string;
-  profile_photo?: string;
-  role?: string;
-}
+import React, { useState, useEffect, useRef } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { apiFetch, getImageUrl } from '../utils/api';
+import { User, Mail, Phone, Calendar, Camera, Save, Shield, BadgeCheck, Trash2, Key, CheckCircle2, AlertCircle } from 'lucide-react';
 
 interface ProfileSettingsProps {
-  onUpdate?: () => void;
+  onUpdate: () => void;
 }
 
 export const ProfileSettings: React.FC<ProfileSettingsProps> = ({ onUpdate }) => {
-  const [user, setUser] = useState<UserProfile | null>(null);
+  const [user, setUser] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  
+  const [formData, setFormData] = useState({
+    name: '',
+    surname: '',
+    phone_number: '',
+    birthday: ''
+  });
 
-  // Profil Bilgileri State'i
-  const [name, setName] = useState('');
-  const [surname, setSurname] = useState('');
-  const [phone, setPhone] = useState('');
-  const [age, setAge] = useState('');
-  const [birthday, setBirthday] = useState('');
-  const [infoLoading, setInfoLoading] = useState(false);
-  const [infoMessage, setInfoMessage] = useState<{ text: string; isError: boolean } | null>(null);
+  const [passwordData, setPasswordData] = useState({
+    current_password: '',
+    new_password: '',
+    new_password_confirm: ''
+  });
 
-  // Şifre Değiştirme State'i
-  const [currentPassword, setCurrentPassword] = useState('');
-  const [newPassword, setNewPassword] = useState('');
-  const [confirmPassword, setConfirmPassword] = useState('');
-  const [pwLoading, setPwLoading] = useState(false);
-  const [pwMessage, setPwMessage] = useState<{ text: string; isError: boolean } | null>(null);
-
-  // Avatar (Fotoğraf) State'i
-  const [avatarFile, setAvatarFile] = useState<File | null>(null);
-  const [avatarLoading, setAvatarLoading] = useState(false);
-  const [avatarMessage, setAvatarMessage] = useState<{ text: string; isError: boolean } | null>(null);
+  const [pwSaving, setPwSaving] = useState(false);
 
   const fetchProfile = async () => {
     try {
-      const response = await apiFetch('/auth/me');
-      const data = await response.json();
-      const u = data.user;
-      setUser(u);
-      setName(u?.name || '');
-      setSurname(u?.surname || '');
-      setPhone(u?.phone_number || '');
-      setAge(u?.age ? String(u.age) : '');
-      setBirthday(u?.birthday || '');
-    } catch (error) {
-      console.error('Kullanıcı bilgileri alınırken hata:', error);
+      const res = await apiFetch('/auth/me');
+      const data = await res.json();
+      setUser(data.user);
+      setFormData({
+        name: data.user.name || '',
+        surname: data.user.surname || '',
+        phone_number: data.user.phone_number || '',
+        birthday: data.user.birthday ? (data.user.birthday.includes('T') ? data.user.birthday.split('T')[0] : data.user.birthday) : ''
+      });
+    } catch (err) {
+      console.error("Profil yüklenemedi:", err);
     } finally {
       setLoading(false);
     }
@@ -64,344 +50,266 @@ export const ProfileSettings: React.FC<ProfileSettingsProps> = ({ onUpdate }) =>
     fetchProfile();
   }, []);
 
-  const handleInfoSubmit = async (e: React.FormEvent) => {
+  const handleUpdate = async (e: React.FormEvent) => {
     e.preventDefault();
-    setInfoLoading(true);
-    setInfoMessage(null);
+    setSaving(true);
     try {
-      const payload: Record<string, any> = {};
-      if (name) payload.name = name;
-      if (surname) payload.surname = surname;
-      if (phone) payload.phone_number = phone;
-      if (age) payload.age = parseInt(age, 10);
-      if (birthday) payload.birthday = birthday;
-
-      await apiFetch('/users/me', {
+      const res = await apiFetch('/users/me', {
         method: 'PUT',
-        body: JSON.stringify(payload),
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(formData)
       });
-      setInfoMessage({ text: 'Profil başarıyla güncellendi.', isError: false });
-      await fetchProfile();
-      onUpdate?.();
+      if (!res.ok) {
+        const error = await res.json();
+        throw new Error(error.message || "Güncelleme hatası");
+      }
+      alert("Profil başarıyla güncellendi.");
+      onUpdate();
+      fetchProfile();
     } catch (err: any) {
-      setInfoMessage({ text: err.message || 'Profil güncellenirken bir hata oluştu.', isError: true });
+      alert(err.message || "Güncelleme sırasında hata oluştu.");
     } finally {
-      setInfoLoading(false);
+      setSaving(false);
     }
   };
 
-  const handlePasswordSubmit = async (e: React.FormEvent) => {
+  const handlePasswordChange = async (e: React.FormEvent) => {
     e.preventDefault();
-    setPwLoading(true);
-    setPwMessage(null);
-
-    if (newPassword !== confirmPassword) {
-      setPwMessage({ text: 'Yeni şifre ile tekrarı eşleşmiyor.', isError: true });
-      setPwLoading(false);
+    if (passwordData.new_password !== passwordData.new_password_confirm) {
+      alert("Yeni şifreler eşleşmiyor.");
       return;
     }
-
+    setPwSaving(true);
     try {
-      await apiFetch('/users/me/password', {
+      const res = await apiFetch('/users/me/password', {
         method: 'PUT',
-        body: JSON.stringify({
-          current_password: currentPassword,
-          new_password: newPassword,
-          new_password_confirm: confirmPassword,
-        }),
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(passwordData)
       });
-      setPwMessage({ text: 'Şifreniz başarıyla güncellendi.', isError: false });
-      setCurrentPassword('');
-      setNewPassword('');
-      setConfirmPassword('');
-      onUpdate?.();
+      if (!res.ok) {
+        const error = await res.json();
+        throw new Error(error.message || "Şifre değiştirme hatası");
+      }
+      alert("Şifreniz başarıyla değiştirildi.");
+      setPasswordData({ current_password: '', new_password: '', new_password_confirm: '' });
     } catch (err: any) {
-      setPwMessage({ text: err.message || 'Şifre değiştirilirken bir hata oluştu.', isError: true });
+      alert(err.message || "Hata oluştu.");
     } finally {
-      setPwLoading(false);
+      setPwSaving(false);
     }
   };
 
-  const handleAvatarSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!avatarFile) return;
+  const handleAvatarUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
 
-    setAvatarLoading(true);
-    setAvatarMessage(null);
+    const formData = new FormData();
+    formData.append('avatar', file);
 
     try {
-      const formData = new FormData();
-      formData.append('avatar', avatarFile);
-
-      await apiFetch('/users/me/avatar', {
+      const res = await apiFetch('/users/me/avatar', {
         method: 'POST',
         body: formData,
+        // FormData kullanırken Content-Type başlığını tarayıcıya bırakmalıyız
       });
-
-      setAvatarMessage({ text: 'Profil fotoğrafı başarıyla yüklendi.', isError: false });
-      setAvatarFile(null);
-      await fetchProfile();
-      onUpdate?.();
-    } catch (err: any) {
-      setAvatarMessage({ text: err.message || 'Fotoğraf yüklenirken bir hata oluştu.', isError: true });
-    } finally {
-      setAvatarLoading(false);
+      if (!res.ok) throw new Error("Yükleme hatası");
+      alert("Profil fotoğrafı güncellendi.");
+      fetchProfile();
+      onUpdate();
+    } catch (err) {
+      alert("Fotoğraf yüklenirken bir hata oluştu.");
     }
   };
 
-  const handleAvatarDelete = async () => {
+  const handleDeleteAvatar = async () => {
     if (!window.confirm("Profil fotoğrafınızı silmek istediğinize emin misiniz?")) return;
-    
-    setAvatarLoading(true);
-    setAvatarMessage(null);
     try {
-      await apiFetch('/users/me/avatar', { method: 'DELETE' });
-      setAvatarMessage({ text: 'Profil fotoğrafı silindi.', isError: false });
-      await fetchProfile();
-      onUpdate?.();
-    } catch (err: any) {
-      setAvatarMessage({ text: err.message || 'Fotoğraf silinirken bir hata oluştu.', isError: true });
-    } finally {
-      setAvatarLoading(false);
+      const res = await apiFetch('/users/me/avatar', { method: 'DELETE' });
+      if (!res.ok) throw new Error("Silme hatası");
+      alert("Profil fotoğrafı silindi.");
+      fetchProfile();
+      onUpdate();
+    } catch (err) {
+      alert("Silme işlemi başarısız.");
     }
   };
 
-  const getAvatarUrl = (path?: string) => {
-    if (!path) return null;
-    if (path.startsWith('http')) return path;
-    const cleanPath = path.startsWith('/') ? path : `/${path}`;
-    return `http://localhost:8000${cleanPath}`;
-  };
-
-  if (loading) {
-    return (
-      <div className="w-full min-h-screen flex items-center justify-center p-4">
-        <div className="text-[#00f0ff] animate-pulse font-bold text-xl">
-          Profil Yükleniyor...
-        </div>
-      </div>
-    );
-  }
+  if (loading) return (
+    <div className="flex justify-center py-20">
+      <div className="w-12 h-12 border-4 border-[#00f0ff]/20 border-t-[#00f0ff] rounded-full animate-spin" />
+    </div>
+  );
 
   return (
-    <div className="w-full max-w-7xl mx-auto p-4 sm:p-6 lg:p-8 space-y-8 animate-fade-in-up">
-      <h2 className="text-3xl font-extrabold text-slate-100 tracking-tight border-b border-slate-800 pb-4">
-        Profil Ayarları
-      </h2>
-
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        {/* SOL KOLON: Profil Fotoğrafı (Avatar) */}
-        <div className="lg:col-span-1 bg-slate-900 border border-slate-800 rounded-3xl p-8 shadow-2xl flex flex-col items-center text-center h-fit">
-          <div className="relative mb-6 group">
-            {user?.profile_photo ? (
-              <div className="relative">
-                <img 
-                  src={getAvatarUrl(user.profile_photo)!} 
-                  alt="Profil" 
-                  className="w-40 h-40 rounded-full object-cover border-4 border-[#b026ff] shadow-[0_0_20px_rgba(176,38,255,0.4)] group-hover:scale-105 transition-transform duration-300"
-                />
-                <button 
-                  onClick={handleAvatarDelete}
-                  className="absolute -top-1 -right-1 bg-red-600 text-white p-2 rounded-full shadow-xl hover:bg-red-500 transition-colors border-2 border-slate-900"
-                  title="Fotoğrafı Sil"
-                >
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M6 18L18 6M6 6l12 12" />
-                  </svg>
-                </button>
-              </div>
-            ) : (
-              <div className="w-40 h-40 rounded-full bg-slate-800 flex items-center justify-center border-4 border-slate-700 shadow-lg group-hover:scale-105 transition-transform duration-300">
-                <svg className="w-16 h-16 text-slate-500" fill="currentColor" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg">
-                  <path fillRule="evenodd" d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z" clipRule="evenodd" />
-                </svg>
-              </div>
-            )}
-          </div>
-
-          <h3 className="text-xl font-bold text-slate-200 mb-6">Fotoğrafını Değiştir</h3>
-          
-          <form onSubmit={handleAvatarSubmit} className="w-full flex flex-col gap-4">
-            <input
-              type="file"
-              accept="image/*"
-              onChange={(e) => setAvatarFile(e.target.files ? e.target.files[0] : null)}
-              className="w-full text-sm text-slate-400 file:mr-4 file:py-2.5 file:px-4 file:rounded-xl file:border-0 file:text-sm file:font-semibold file:bg-slate-800 file:text-[#00f0ff] hover:file:bg-slate-700 hover:file:text-white transition-all cursor-pointer"
-            />
-            
-            {avatarMessage && (
-              <div className={`p-3 rounded-lg text-sm font-medium ${avatarMessage.isError ? 'bg-red-900/30 text-red-400 border border-red-800' : 'bg-emerald-900/30 text-emerald-400 border border-emerald-800'}`}>
-                {avatarMessage.text}
-              </div>
-            )}
-
-            <button
-              type="submit"
-              disabled={!avatarFile || avatarLoading}
-              className="w-full py-3 rounded-xl font-bold bg-[#b026ff] text-white hover:bg-[#c455ff] hover:shadow-[0_0_15px_rgba(176,38,255,0.4)] transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {avatarLoading ? 'Yükleniyor...' : 'Fotoğrafı Yükle'}
-            </button>
-          </form>
-        </div>
-
-        {/* SAĞ KOLON: Profil Bilgileri Formu */}
-        <div className="lg:col-span-2 space-y-8">
-          {/* Kişisel Bilgiler */}
-          <div className="bg-slate-900 border border-slate-800 rounded-3xl p-8 shadow-2xl">
-            <h3 className="text-2xl font-bold text-[#00f0ff] mb-8">Kişisel Bilgiler</h3>
-            
-            {infoMessage && (
-              <div className={`mb-6 p-4 rounded-xl text-sm font-bold ${infoMessage.isError ? 'bg-red-900/30 text-red-400 border border-red-800' : 'bg-emerald-900/30 text-emerald-400 border border-emerald-800'}`}>
-                {infoMessage.text}
-              </div>
-            )}
-
-            <form onSubmit={handleInfoSubmit} className="space-y-6">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div className="space-y-2">
-                  <label className="block text-sm font-semibold text-slate-400">Adınız</label>
-                  <input
-                    type="text"
-                    value={name}
-                    onChange={(e) => setName(e.target.value)}
-                    className="w-full p-3.5 rounded-xl bg-slate-950 border border-slate-800 text-slate-200 focus:outline-none focus:border-[#00f0ff] focus:ring-1 focus:ring-[#00f0ff] transition-all shadow-inner"
-                    placeholder="Ahmet"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <label className="block text-sm font-semibold text-slate-400">Soyadınız</label>
-                  <input
-                    type="text"
-                    value={surname}
-                    onChange={(e) => setSurname(e.target.value)}
-                    className="w-full p-3.5 rounded-xl bg-slate-950 border border-slate-800 text-slate-200 focus:outline-none focus:border-[#00f0ff] focus:ring-1 focus:ring-[#00f0ff] transition-all shadow-inner"
-                    placeholder="Yılmaz"
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div className="space-y-2">
-                  <label className="block text-sm font-semibold text-slate-400">Yaş</label>
-                  <input
-                    type="number"
-                    min="13"
-                    max="120"
-                    value={age}
-                    onChange={(e) => setAge(e.target.value)}
-                    className="w-full p-3.5 rounded-xl bg-slate-950 border border-slate-800 text-slate-200 focus:outline-none focus:border-[#00f0ff] focus:ring-1 focus:ring-[#00f0ff] transition-all shadow-inner"
-                    placeholder="25"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <label className="block text-sm font-semibold text-slate-400">Doğum Tarihi</label>
-                  <input
-                    type="date"
-                    value={birthday}
-                    onChange={(e) => setBirthday(e.target.value)}
-                    className="w-full p-3.5 rounded-xl bg-slate-950 border border-slate-800 text-slate-200 focus:outline-none focus:border-[#00f0ff] focus:ring-1 focus:ring-[#00f0ff] transition-all shadow-inner"
-                  />
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                <label className="block text-sm font-semibold text-slate-400">Telefon Numarası</label>
-                <input
-                  type="tel"
-                  value={phone}
-                  onChange={(e) => setPhone(e.target.value)}
-                  className="w-full p-3.5 rounded-xl bg-slate-950 border border-slate-800 text-slate-200 focus:outline-none focus:border-[#00f0ff] focus:ring-1 focus:ring-[#00f0ff] transition-all shadow-inner"
-                  placeholder="+905551234567"
-                />
-                <p className="text-xs text-slate-600">Uluslararası format: +90XXXXXXXXXX</p>
-              </div>
-
-              {/* Email (Sadece Okunabilir) */}
-              {user?.mail && (
-                <div className="space-y-2">
-                  <label className="block text-sm font-semibold text-slate-500">Email Adresi (Değiştirilemez)</label>
-                  <input
-                    type="email"
-                    value={user.mail}
-                    disabled
-                    className="w-full p-3.5 rounded-xl bg-slate-900 border border-slate-800 text-slate-500 cursor-not-allowed opacity-70"
-                  />
+    <div className="max-w-4xl mx-auto space-y-12 animate-fade-in">
+      {/* Profil Header Card */}
+      <div className="bg-slate-900/40 backdrop-blur-3xl border border-white/5 rounded-[40px] p-8 md:p-12 shadow-2xl relative overflow-hidden">
+        <div className="absolute top-0 right-0 w-96 h-96 bg-[#00f0ff]/5 blur-3xl rounded-full -mr-32 -mt-32 pointer-events-none" />
+        
+        <div className="flex flex-col md:flex-row items-center gap-12 relative z-10">
+          {/* Avatar Section */}
+          <div className="relative group">
+            <div className="w-40 h-40 rounded-[48px] bg-slate-800 border-4 border-white/10 overflow-hidden shadow-2xl transition-transform group-hover:scale-105 duration-500 relative">
+              {user?.profile_photo ? (
+                <>
+                  <img src={getImageUrl(user.profile_photo)} alt="Profile" className="w-full h-full object-cover" />
+                  <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-3">
+                    <button onClick={() => fileInputRef.current?.click()} className="p-3 bg-white/10 backdrop-blur-md rounded-xl text-white hover:bg-[#00f0ff] hover:text-slate-950 transition-all">
+                      <Camera size={20} />
+                    </button>
+                    <button onClick={handleDeleteAvatar} className="p-3 bg-white/10 backdrop-blur-md rounded-xl text-white hover:bg-red-500 transition-all">
+                      <Trash2 size={20} />
+                    </button>
+                  </div>
+                </>
+              ) : (
+                <div className="w-full h-full flex flex-col items-center justify-center text-slate-500 gap-2">
+                  <User size={48} />
+                  <button onClick={() => fileInputRef.current?.click()} className="text-[10px] font-black uppercase tracking-widest text-[#00f0ff] hover:underline">Fotoğraf Ekle</button>
                 </div>
               )}
-
-              <div className="pt-6 border-t border-slate-800 flex justify-end">
-                <button
-                  type="submit"
-                  disabled={infoLoading}
-                  className="px-8 py-3.5 rounded-xl font-bold bg-[#00f0ff] text-slate-900 hover:bg-[#00c0cc] hover:shadow-[0_0_20px_rgba(0,240,255,0.4)] transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  {infoLoading ? 'Kaydediliyor...' : 'Değişiklikleri Kaydet'}
-                </button>
-              </div>
-            </form>
+            </div>
+            <input type="file" ref={fileInputRef} className="hidden" accept="image/*" onChange={handleAvatarUpload} />
           </div>
 
-          {/* Şifre Değiştirme */}
-          <div className="bg-slate-900 border border-slate-800 rounded-3xl p-8 shadow-2xl">
-            <h3 className="text-2xl font-bold text-[#b026ff] mb-8">Şifre Değiştir</h3>
-
-            {pwMessage && (
-              <div className={`mb-6 p-4 rounded-xl text-sm font-bold ${pwMessage.isError ? 'bg-red-900/30 text-red-400 border border-red-800' : 'bg-emerald-900/30 text-emerald-400 border border-emerald-800'}`}>
-                {pwMessage.text}
+          <div className="flex-1 text-center md:text-left">
+            <div className="flex flex-wrap items-center justify-center md:justify-start gap-3 mb-4">
+              <h2 className="text-4xl font-black text-white tracking-tighter">{user?.name} {user?.surname}</h2>
+              <div className="bg-[#00f0ff]/10 text-[#00f0ff] border border-[#00f0ff]/20 px-3 py-1 rounded-full flex items-center gap-2">
+                <BadgeCheck size={12} />
+                <span className="text-[10px] font-black uppercase tracking-widest">Doğrulanmış</span>
               </div>
-            )}
-
-            <form onSubmit={handlePasswordSubmit} className="space-y-6">
-              <div className="space-y-2">
-                <label className="block text-sm font-semibold text-slate-400">Mevcut Şifre</label>
-                <input
-                  type="password"
-                  required
-                  value={currentPassword}
-                  onChange={(e) => setCurrentPassword(e.target.value)}
-                  className="w-full p-3.5 rounded-xl bg-slate-950 border border-slate-800 text-slate-200 focus:outline-none focus:border-[#b026ff] focus:ring-1 focus:ring-[#b026ff] transition-all shadow-inner"
-                  placeholder="••••••••"
-                />
-              </div>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div className="space-y-2">
-                  <label className="block text-sm font-semibold text-slate-400">Yeni Şifre</label>
-                  <input
-                    type="password"
-                    required
-                    minLength={8}
-                    value={newPassword}
-                    onChange={(e) => setNewPassword(e.target.value)}
-                    className="w-full p-3.5 rounded-xl bg-slate-950 border border-slate-800 text-slate-200 focus:outline-none focus:border-[#b026ff] focus:ring-1 focus:ring-[#b026ff] transition-all shadow-inner"
-                    placeholder="En az 8 karakter"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <label className="block text-sm font-semibold text-slate-400">Yeni Şifre (Tekrar)</label>
-                  <input
-                    type="password"
-                    required
-                    minLength={8}
-                    value={confirmPassword}
-                    onChange={(e) => setConfirmPassword(e.target.value)}
-                    className="w-full p-3.5 rounded-xl bg-slate-950 border border-slate-800 text-slate-200 focus:outline-none focus:border-[#b026ff] focus:ring-1 focus:ring-[#b026ff] transition-all shadow-inner"
-                    placeholder="Tekrar girin"
-                  />
-                </div>
-              </div>
-              <div className="pt-6 border-t border-slate-800 flex justify-end">
-                <button
-                  type="submit"
-                  disabled={pwLoading || !currentPassword || !newPassword || !confirmPassword}
-                  className="px-8 py-3.5 rounded-xl font-bold bg-[#b026ff] text-white hover:bg-[#c455ff] hover:shadow-[0_0_20px_rgba(176,38,255,0.4)] transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  {pwLoading ? 'Güncelleniyor...' : 'Şifreyi Güncelle'}
-                </button>
-              </div>
-            </form>
+            </div>
+            <p className="text-slate-400 font-medium mb-1">{user?.mail}</p>
+            <p className="text-slate-500 text-xs font-bold uppercase tracking-widest">Kayıt Tarihi: {new Date(user?.created_at).toLocaleDateString('tr-TR')}</p>
           </div>
         </div>
+      </div>
+
+      {/* Profil Form Card */}
+      <div className="bg-slate-900/40 backdrop-blur-3xl border border-white/5 rounded-[40px] p-8 md:p-12 shadow-2xl">
+        <form onSubmit={handleUpdate} className="space-y-10">
+          <div className="flex items-center gap-4 mb-2">
+            <div className="w-8 h-8 rounded-lg bg-white/5 flex items-center justify-center text-[#00f0ff]">
+              <User size={16} />
+            </div>
+            <h3 className="text-xl font-black text-white tracking-tight">Kişisel Bilgiler</h3>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+            <div className="space-y-3">
+              <label className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em] ml-2">Adınız</label>
+              <input 
+                type="text" 
+                className="w-full bg-slate-950/50 border border-white/5 rounded-2xl py-4 px-6 text-white focus:outline-none focus:border-[#00f0ff]/50 transition-all font-bold"
+                value={formData.name}
+                onChange={(e) => setFormData({...formData, name: e.target.value})}
+                required
+              />
+            </div>
+            <div className="space-y-3">
+              <label className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em] ml-2">Soyadınız</label>
+              <input 
+                type="text" 
+                className="w-full bg-slate-950/50 border border-white/5 rounded-2xl py-4 px-6 text-white focus:outline-none focus:border-[#00f0ff]/50 transition-all font-bold"
+                value={formData.surname}
+                onChange={(e) => setFormData({...formData, surname: e.target.value})}
+                required
+              />
+            </div>
+            <div className="space-y-3">
+              <label className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em] ml-2">Telefon</label>
+              <input 
+                type="tel" 
+                className="w-full bg-slate-950/50 border border-white/5 rounded-2xl py-4 px-6 text-white focus:outline-none focus:border-[#00f0ff]/50 transition-all font-bold"
+                value={formData.phone_number}
+                onChange={(e) => setFormData({...formData, phone_number: e.target.value})}
+              />
+            </div>
+            <div className="space-y-3">
+              <label className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em] ml-2">Doğum Tarihi</label>
+              <input 
+                type="date" 
+                className="w-full bg-slate-950/50 border border-white/5 rounded-2xl py-4 px-6 text-white focus:outline-none focus:border-[#00f0ff]/50 transition-all font-bold"
+                value={formData.birthday}
+                onChange={(e) => setFormData({...formData, birthday: e.target.value})}
+              />
+            </div>
+          </div>
+
+          <div className="pt-6 border-t border-white/5 flex flex-col md:flex-row gap-6 md:items-center justify-between">
+            <div className="flex items-center gap-3 text-emerald-500/80">
+              <CheckCircle2 size={16} />
+              <p className="text-[10px] font-bold uppercase tracking-widest">Bilgileriniz uçtan uca şifrelenir.</p>
+            </div>
+            <button 
+              type="submit"
+              disabled={saving}
+              className="px-12 py-5 bg-white text-slate-950 rounded-2xl font-black text-sm uppercase tracking-widest hover:bg-[#00f0ff] hover:shadow-[0_0_40px_rgba(0,240,255,0.3)] transition-all disabled:opacity-50 flex items-center justify-center gap-3"
+            >
+              {saving ? 'Güncelleniyor...' : <><Save size={20} /> Güncelle</>}
+            </button>
+          </div>
+        </form>
+      </div>
+
+      {/* Şifre Değiştirme Card */}
+      <div className="bg-slate-900/40 backdrop-blur-3xl border border-white/5 rounded-[40px] p-8 md:p-12 shadow-2xl">
+        <form onSubmit={handlePasswordChange} className="space-y-10">
+          <div className="flex items-center gap-4 mb-2">
+            <div className="w-8 h-8 rounded-lg bg-white/5 flex items-center justify-center text-[#b026ff]">
+              <Key size={16} />
+            </div>
+            <h3 className="text-xl font-black text-white tracking-tight">Güvenlik ve Şifre</h3>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+            <div className="space-y-3">
+              <label className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em] ml-2">Mevcut Şifre</label>
+              <input 
+                type="password" 
+                className="w-full bg-slate-950/50 border border-white/5 rounded-2xl py-4 px-6 text-white focus:outline-none focus:border-[#b026ff]/50 transition-all font-bold"
+                value={passwordData.current_password}
+                onChange={(e) => setPasswordData({...passwordData, current_password: e.target.value})}
+                required
+              />
+            </div>
+            <div className="space-y-3">
+              <label className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em] ml-2">Yeni Şifre</label>
+              <input 
+                type="password" 
+                className="w-full bg-slate-950/50 border border-white/5 rounded-2xl py-4 px-6 text-white focus:outline-none focus:border-[#b026ff]/50 transition-all font-bold"
+                value={passwordData.new_password}
+                onChange={(e) => setPasswordData({...passwordData, new_password: e.target.value})}
+                required
+              />
+            </div>
+            <div className="space-y-3">
+              <label className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em] ml-2">Yeni Şifre Tekrar</label>
+              <input 
+                type="password" 
+                className="w-full bg-slate-950/50 border border-white/5 rounded-2xl py-4 px-6 text-white focus:outline-none focus:border-[#b026ff]/50 transition-all font-bold"
+                value={passwordData.new_password_confirm}
+                onChange={(e) => setPasswordData({...passwordData, new_password_confirm: e.target.value})}
+                required
+              />
+            </div>
+          </div>
+
+          <div className="pt-6 border-t border-white/5 flex flex-col md:flex-row gap-6 md:items-center justify-between">
+            <div className="flex items-center gap-3 text-red-500/80">
+              <AlertCircle size={16} />
+              <p className="text-[10px] font-bold uppercase tracking-widest">Güçlü bir şifre seçtiğinizden emin olun.</p>
+            </div>
+            <button 
+              type="submit"
+              disabled={pwSaving}
+              className="px-12 py-5 bg-white/5 text-white border border-white/10 rounded-2xl font-black text-sm uppercase tracking-widest hover:bg-[#b026ff] hover:border-[#b026ff] hover:shadow-[0_0_40px_rgba(176,38,255,0.3)] transition-all disabled:opacity-50 flex items-center justify-center gap-3"
+            >
+              {pwSaving ? 'Güncelleniyor...' : 'Şifreyi Değiştir'}
+            </button>
+          </div>
+        </form>
       </div>
     </div>
   );
