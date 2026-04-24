@@ -3,6 +3,29 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { apiFetch } from '../../utils/api';
 import { Pagination } from '../common/Pagination';
 
+interface SortHeaderProps {
+  label: string;
+  field: string;
+  sortField: string;
+  sortOrder: 'asc' | 'desc';
+  onSort: (field: string) => void;
+}
+
+const SortHeader: React.FC<SortHeaderProps> = ({ label, field, sortField, sortOrder, onSort }) => (
+  <th 
+    className="py-4 px-3 cursor-pointer hover:text-[#00f0ff] transition-colors group/header whitespace-nowrap"
+    onClick={() => onSort(field)}
+  >
+    <div className="flex items-center gap-1.5">
+      <span>{label}</span>
+      <div className="flex flex-col text-[8px] opacity-30 group-hover/header:opacity-100">
+        <span className={sortField === field && sortOrder === 'asc' ? 'text-[#00f0ff]' : ''}>▲</span>
+        <span className={sortField === field && sortOrder === 'desc' ? 'text-[#00f0ff]' : ''}>▼</span>
+      </div>
+    </div>
+  </th>
+);
+
 interface AdminGroup {
   id: number;
   name: string;
@@ -84,20 +107,7 @@ export const AdminGroups: React.FC = () => {
     return () => clearTimeout(timer);
   }, [searchTerm, page, sortField, sortOrder]);
 
-  const SortHeader: React.FC<{ label: string; field: string }> = ({ label, field }) => (
-    <th 
-      className="py-4 px-3 cursor-pointer hover:text-[#00f0ff] transition-colors group/header whitespace-nowrap"
-      onClick={() => handleSort(field)}
-    >
-      <div className="flex items-center gap-1.5">
-        <span>{label}</span>
-        <div className="flex flex-col text-[8px] opacity-30 group-hover/header:opacity-100">
-          <span className={sortField === field && sortOrder === 'asc' ? 'text-[#00f0ff]' : ''}>▲</span>
-          <span className={sortField === field && sortOrder === 'desc' ? 'text-[#00f0ff]' : ''}>▼</span>
-        </div>
-      </div>
-    </th>
-  );
+
 
   const handleApprove = async (groupId: number) => {
     try {
@@ -186,12 +196,12 @@ export const AdminGroups: React.FC = () => {
                 <table className="w-full text-left border-collapse">
                   <thead>
                     <tr className="bg-slate-800/50 text-slate-400 text-[10px] uppercase tracking-widest font-black">
-                      <SortHeader label="ID" field="id" />
-                      <SortHeader label="Grup Adı" field="name" />
+                      <SortHeader label="ID" field="id" sortField={sortField} sortOrder={sortOrder} onSort={handleSort} />
+                      <SortHeader label="Grup Adı" field="name" sortField={sortField} sortOrder={sortOrder} onSort={handleSort} />
                       <th className="py-4 px-3">Açıklama</th>
-                      <SortHeader label="Üye Sayısı" field="member_count" />
-                      <SortHeader label="Oluşturulma" field="created_at" />
-                      <SortHeader label="Durum" field="is_approved" />
+                      <SortHeader label="Üye Sayısı" field="member_count" sortField={sortField} sortOrder={sortOrder} onSort={handleSort} />
+                      <SortHeader label="Oluşturulma" field="created_at" sortField={sortField} sortOrder={sortOrder} onSort={handleSort} />
+                      <SortHeader label="Durum" field="is_approved" sortField={sortField} sortOrder={sortOrder} onSort={handleSort} />
                       <th className="py-4 px-3 text-right">İşlemler</th>
                     </tr>
                   </thead>

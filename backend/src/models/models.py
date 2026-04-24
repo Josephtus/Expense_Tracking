@@ -13,7 +13,7 @@ Tasarım Kararları:
 """
 
 import enum
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 from typing import List, Optional
 
 from sqlalchemy import (
@@ -187,8 +187,14 @@ class User(Base):
         back_populates="following",
     )
 
+    @property
+    def calculated_age(self) -> int:
+        """Doğum tarihinden bugünkü yaşı hesaplar."""
+        today = date.today()
+        return today.year - self.birthday.year - ((today.month, today.day) < (self.birthday.month, self.birthday.day))
+
     def __repr__(self) -> str:
-        return f"<User id={self.id} mail={self.mail!r} role={self.role}>"
+        return f"<User id={self.id} mail={self.mail!r} age={self.calculated_age}>"
 
 
 # =============================================================================
@@ -437,6 +443,9 @@ class Report(Base):
     )
 
     # Şikayet detayları
+    category: Mapped[str] = mapped_column(
+        String(50), nullable=False, default="GENEL", server_default="GENEL"
+    )
     aciklama: Mapped[str] = mapped_column(
         Text, nullable=False, comment="Şikayetin ayrıntılı açıklaması"
     )

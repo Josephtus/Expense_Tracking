@@ -1,5 +1,20 @@
 import React, { useEffect, useState } from 'react';
-import { apiFetch } from '../utils/api';
+import { motion, AnimatePresence } from 'framer-motion';
+import { apiFetch, getImageUrl } from '../utils/api';
+import { 
+  LayoutDashboard, 
+  Users, 
+  Share2, 
+  UserCircle, 
+  Flag, 
+  ShieldAlert, 
+  LogOut, 
+  Plus, 
+  Menu, 
+  X,
+  ChevronRight
+} from 'lucide-react';
+
 import { ExpenseForm } from './ExpenseForm';
 import { ExpenseList } from './ExpenseList';
 import { GroupList } from './GroupList';
@@ -12,8 +27,9 @@ import { AdminPanel } from './admin/AdminPanel';
 import { CreateGroupModal } from './CreateGroupModal';
 import { GroupManagement } from './GroupManagement';
 import { GroupMembers } from './GroupMembers';
+import { Home } from './Home';
 
-type TabType = 'Gruplar' | 'Sosyal' | 'Profil' | 'Şikayet' | 'Admin';
+type TabType = 'Ana Sayfa' | 'Gruplar' | 'Sosyal' | 'Profil' | 'Şikayet' | 'Admin';
 type GroupSubTabType = 'Harcamalar' | 'Borç Durumu' | 'Sohbet' | 'Üyeler' | 'Yönetim';
 
 export const Dashboard: React.FC = () => {
@@ -29,8 +45,9 @@ export const Dashboard: React.FC = () => {
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [refreshTrigger, setRefreshTrigger] = useState(0);
 
-  const [activeTab, setActiveTab] = useState<TabType>('Gruplar');
+  const [activeTab, setActiveTab] = useState<TabType>('Ana Sayfa');
   const [activeSubTab, setActiveSubTab] = useState<GroupSubTabType>('Harcamalar');
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
   const fetchUser = async () => {
     try {
@@ -55,7 +72,7 @@ export const Dashboard: React.FC = () => {
 
   const handleLeaveGroup = async () => {
     if (!activeGroupId) return;
-    const confirmLeave = window.confirm("Bu gruptan ayrılmak istediğinize emin misiniz? Liderseniz liderlik başka üyeye geçebilir.");
+    const confirmLeave = window.confirm("Bu gruptan ayrılmak istediğinize emin misiniz?");
     if (!confirmLeave) return;
 
     try {
@@ -74,285 +91,356 @@ export const Dashboard: React.FC = () => {
   if (loading) {
     return (
       <div className="flex flex-col items-center justify-center min-h-screen bg-slate-950">
-        <h2 className="text-3xl font-bold text-[#00f0ff] animate-pulse">Yükleniyor...</h2>
+        <div className="relative">
+          <div className="w-24 h-24 border-4 border-[#00f0ff]/10 border-t-[#00f0ff] rounded-full animate-spin" />
+          <div className="absolute inset-0 flex items-center justify-center">
+            <span className="text-white font-black text-xl">O</span>
+          </div>
+        </div>
+        <p className="mt-8 text-slate-500 font-black text-xs uppercase tracking-[0.3em] animate-pulse">Sistem Hazırlanıyor</p>
       </div>
     );
   }
 
-  // Dinamik sekmeler (Sadece ana kategoriler)
-  const navTabs: TabType[] = ['Gruplar', 'Sosyal', 'Profil', 'Şikayet'];
+  const navTabs: { id: TabType; icon: any; label: string }[] = [
+    { id: 'Ana Sayfa', icon: LayoutDashboard, label: 'Panel' },
+    { id: 'Gruplar', icon: Users, label: 'Gruplar' },
+    { id: 'Sosyal', icon: Share2, label: 'Sosyal' },
+    { id: 'Profil', icon: UserCircle, label: 'Profil' },
+    { id: 'Şikayet', icon: Flag, label: 'Destek' },
+  ];
   
   if (user?.role?.toLowerCase() === 'admin') {
-    navTabs.unshift('Admin');
+    navTabs.unshift({ id: 'Admin', icon: ShieldAlert, label: 'Yönetim' });
   }
 
+  const renderTabIcon = (tabId: TabType) => {
+    const tab = navTabs.find(t => t.id === tabId);
+    if (!tab) return null;
+    const Icon = tab.icon;
+    return <Icon size={18} />;
+  };
+
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-200">
-      <header className="bg-slate-900 border-b border-slate-800 sticky top-0 z-40 shadow-lg">
-        <div className="max-w-[1600px] mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between items-center py-5 border-b border-slate-800/50 mb-2">
+    <div className="min-h-screen bg-slate-950 text-slate-200 selection:bg-[#00f0ff] selection:text-slate-900">
+      {/* Dynamic Backgrounds */}
+      <div className="fixed inset-0 overflow-hidden pointer-events-none z-0">
+        <div className="absolute top-[-20%] left-[-10%] w-[60%] h-[60%] rounded-full bg-[#00f0ff]/5 blur-[120px] animate-pulse" />
+        <div className="absolute bottom-[-10%] right-[-10%] w-[50%] h-[50%] rounded-full bg-[#b026ff]/5 blur-[120px] animate-pulse" style={{ animationDelay: '2s' }} />
+      </div>
+
+      {/* Header / Navbar */}
+      <header className="fixed top-0 left-0 right-0 z-50 bg-slate-950/50 backdrop-blur-2xl border-b border-white/5">
+        <div className="max-w-[1600px] mx-auto px-4 md:px-8 h-20 flex items-center justify-between">
+          <div className="flex items-center gap-8">
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 bg-gradient-to-br from-[#00f0ff] to-[#b026ff] rounded-xl flex items-center justify-center font-black text-slate-900 text-xl shadow-[0_0_15px_rgba(0,240,255,0.4)]">
-                ET
+              <div className="w-10 h-10 bg-gradient-to-br from-[#00f0ff] to-[#b026ff] rounded-xl flex items-center justify-center font-black text-slate-900 text-xl shadow-[0_0_20px_rgba(0,240,255,0.3)]">
+                O
               </div>
-              <div className="flex flex-col">
-                <h1 className="text-xl font-black text-slate-100 hidden md:block">EXPENSE <span className="text-[#00f0ff]">TRACKER</span></h1>
-                {activeGroupName && (
-                  <span className="text-[10px] text-[#00f0ff] font-bold uppercase tracking-widest flex items-center gap-1">
-                    <span className="w-1.5 h-1.5 bg-[#00f0ff] rounded-full animate-pulse"></span>
-                    AKTİF GRUP: {activeGroupName}
-                  </span>
-                )}
+              <div className="hidden lg:block">
+                <h1 className="text-lg font-black text-white tracking-tighter leading-none">OCTOQUS</h1>
+                <p className="text-[10px] text-slate-500 font-bold tracking-widest uppercase mt-0.5">LABS ENGINE</p>
               </div>
             </div>
-            
-            <div className="flex items-center gap-4">
-              {activeTab === 'Gruplar' && (
-                <button 
-                  onClick={() => setIsCreateModalOpen(true)}
-                  className="hidden sm:flex items-center gap-2 bg-[#b026ff] text-white px-4 py-2 rounded-xl font-bold text-xs hover:bg-[#c455ff] transition-all shadow-lg"
+
+            {/* Desktop Navigation */}
+            <nav className="hidden md:flex items-center gap-1">
+              {navTabs.map((tab) => (
+                <button
+                  key={tab.id}
+                  onClick={() => {
+                    setActiveTab(tab.id);
+                    if (tab.id !== 'Gruplar') setActiveGroupId(null);
+                  }}
+                  className={`px-4 py-2 rounded-xl text-xs font-black uppercase tracking-widest transition-all flex items-center gap-2 ${
+                    activeTab === tab.id 
+                      ? 'bg-white/10 text-[#00f0ff] shadow-inner' 
+                      : 'text-slate-500 hover:text-white hover:bg-white/5'
+                  }`}
                 >
-                  + Yeni Grup Oluştur
+                  <tab.icon size={14} />
+                  {tab.label}
                 </button>
-              )}
-              
-              <div className="flex items-center gap-3 border-l border-slate-800 pl-4 hidden sm:flex">
-                <div className="text-sm text-right">
-                  <span className="text-slate-100 font-bold block leading-tight">{user?.name}</span>
-                  <span className="text-[10px] text-slate-500 font-mono uppercase tracking-tighter">{user?.role}</span>
-                </div>
-                {user?.profile_photo ? (
-                  <img 
-                    src={`http://localhost:8000${user.profile_photo.startsWith('/') ? user.profile_photo : '/' + user.profile_photo}`} 
-                    alt="Avatar" 
-                    className="w-8 h-8 rounded-full object-cover border border-[#b026ff] shadow-[0_0_5px_rgba(176,38,255,0.3)]"
-                  />
-                ) : (
-                  <div className="w-8 h-8 rounded-full bg-slate-800 border border-slate-700 flex items-center justify-center">
-                    <span className="text-[10px]">👤</span>
-                  </div>
-                )}
+              ))}
+            </nav>
+          </div>
+
+          <div className="flex items-center gap-6">
+            {activeTab === 'Gruplar' && !activeGroupId && (
+              <button 
+                onClick={() => setIsCreateModalOpen(true)}
+                className="hidden sm:flex items-center gap-2 bg-white text-black px-5 py-2.5 rounded-xl font-black text-xs uppercase tracking-widest hover:bg-[#00f0ff] transition-all active:scale-95 shadow-xl"
+              >
+                <Plus size={16} /> Yeni Grup
+              </button>
+            )}
+
+            <div className="flex items-center gap-4 pl-6 border-l border-white/10">
+              <div className="hidden sm:block text-right">
+                <p className="text-sm font-black text-white leading-none mb-1">{user?.name}</p>
+                <p className="text-[9px] text-[#00f0ff] font-black uppercase tracking-widest">Hoş geldin!</p>
               </div>
-              <button onClick={logout} className="p-2 hover:bg-red-500/10 rounded-lg text-red-400 transition-colors text-xs font-bold">Çıkış</button>
+              <div className="relative group">
+                <div 
+                  onClick={() => setActiveTab('Profil')}
+                  className="w-10 h-10 rounded-2xl bg-white/5 border border-white/10 flex items-center justify-center overflow-hidden group-hover:border-[#00f0ff] transition-all cursor-pointer"
+                >
+                  {user?.profile_photo ? (
+                    <img src={getImageUrl(user.profile_photo)} alt="User" className="w-full h-full object-cover" />
+                  ) : (
+                    <span className="text-xs">👤</span>
+                  )}
+                </div>
+              </div>
+              <button onClick={logout} className="p-2.5 rounded-xl bg-red-500/10 text-red-500 hover:bg-red-500 hover:text-white transition-all">
+                <LogOut size={18} />
+              </button>
+              
+              <button onClick={() => setIsSidebarOpen(!isSidebarOpen)} className="md:hidden p-2.5 rounded-xl bg-white/5 text-white">
+                {isSidebarOpen ? <X size={20} /> : <Menu size={20} />}
+              </button>
             </div>
           </div>
-          
-          <nav className="flex space-x-2 overflow-x-auto pb-0 no-scrollbar scroll-smooth">
-            {navTabs.map((tab) => (
-              <button
-                key={tab}
-                onClick={() => setActiveTab(tab)}
-                className={`whitespace-nowrap py-3 px-5 rounded-t-xl font-bold text-xs sm:text-sm transition-all ${
-                  activeTab === tab
-                    ? 'bg-slate-800 text-[#00f0ff] border-t-2 border-[#00f0ff] shadow-[0_-4px_10px_rgba(0,240,255,0.1)]'
-                    : 'text-slate-500 border-t-2 border-transparent hover:text-slate-300'
-                }`}
-              >
-                {tab === 'Admin' ? '🛡️ ADMİN' : tab}
-              </button>
-            ))}
-          </nav>
         </div>
       </header>
 
-      <main className="max-w-[1600px] mx-auto px-4 sm:px-6 lg:px-8 py-10">
-        
-        {activeTab === 'Gruplar' && (
-          <div className="space-y-8">
-            {!activeGroupId ? (
-              <GroupList 
-                onSelectGroup={(id, name, role, isApproved) => { 
-                  setActiveGroupId(id); 
-                  setActiveGroupName(name);
-                  setActiveGroupRole(role);
-                  setIsActiveGroupApproved(isApproved);
-                  setActiveSubTab('Harcamalar');
-                }} 
-                activeGroupId={activeGroupId} 
-                refreshTrigger={refreshTrigger}
-              />
-            ) : (
-              <div className="animate-fade-in space-y-6">
-                {/* Geri Dön ve Bilgi Paneli */}
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-slate-900 p-6 rounded-3xl border border-slate-800 shadow-2xl relative overflow-hidden">
-                  <div className="absolute top-0 left-0 w-1 h-full bg-gradient-to-b from-[#00f0ff] to-[#b026ff]"></div>
+      {/* Mobile Navigation Drawer */}
+      <AnimatePresence>
+        {isSidebarOpen && (
+          <motion.div
+            initial={{ opacity: 0, y: -20 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -20 }}
+            className="fixed inset-0 z-40 bg-slate-950 pt-24 px-6 md:hidden"
+          >
+            <div className="flex flex-col gap-4">
+              {navTabs.map((tab) => (
+                <button
+                  key={tab.id}
+                  onClick={() => {
+                    setActiveTab(tab.id);
+                    setIsSidebarOpen(false);
+                    if (tab.id !== 'Gruplar') setActiveGroupId(null);
+                  }}
+                  className={`p-6 rounded-[24px] text-lg font-black flex items-center justify-between transition-all ${
+                    activeTab === tab.id 
+                      ? 'bg-gradient-to-r from-[#00f0ff]/20 to-transparent border border-[#00f0ff]/20 text-white' 
+                      : 'bg-white/5 text-slate-500'
+                  }`}
+                >
                   <div className="flex items-center gap-4">
-                    <button 
-                      onClick={() => {
-                        setActiveGroupId(null);
-                        setActiveGroupName(null);
-                        setActiveGroupRole(null);
-                        setIsActiveGroupApproved(false);
-                      }}
-                      className="group flex items-center gap-2 bg-slate-800 hover:bg-slate-700 text-slate-200 px-4 py-2.5 rounded-2xl transition-all border border-slate-700/50"
-                    >
-                      <span className="group-hover:-translate-x-1 transition-transform">⬅</span>
-                      <span className="text-xs font-bold uppercase tracking-wider">Gruplara Dön</span>
-                    </button>
-                    <div>
-                      <h2 className="text-2xl font-black text-white tracking-tight">{activeGroupName}</h2>
-                      <div className="flex items-center gap-2 mt-1">
-                        <span className={`text-[10px] px-2 py-0.5 rounded-full font-black uppercase tracking-widest ${activeGroupRole === 'GROUP_LEADER' ? 'bg-amber-500/20 text-amber-500' : 'bg-blue-500/20 text-blue-500'}`}>
-                          {activeGroupRole === 'GROUP_LEADER' ? 'Lider' : 'Üye'}
-                        </span>
-                        {isActiveGroupApproved ? (
-                          <span className="text-[10px] bg-emerald-500/10 text-emerald-500 px-2 py-0.5 rounded-full font-bold uppercase tracking-widest border border-emerald-500/20">Onaylı</span>
-                        ) : (
-                          <span className="text-[10px] bg-orange-500/10 text-orange-500 px-2 py-0.5 rounded-full font-bold uppercase tracking-widest border border-orange-500/20">Onay Bekliyor</span>
-                        )}
-                      </div>
-                    </div>
+                    <tab.icon size={24} />
+                    {tab.label}
                   </div>
+                  <ChevronRight size={20} />
+                </button>
+              ))}
+              <button 
+                onClick={() => { setIsCreateModalOpen(true); setIsSidebarOpen(false); }}
+                className="w-full p-6 rounded-[24px] bg-white text-black font-black text-lg mt-4"
+              >
+                + Yeni Grup Oluştur
+              </button>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
-                  {activeGroupRole !== 'GUEST' && (
-                    <button 
-                      onClick={handleLeaveGroup}
-                      className="bg-red-500/10 hover:bg-red-500 text-red-500 hover:text-white px-5 py-2.5 rounded-2xl text-xs font-bold transition-all border border-red-500/30 flex items-center gap-2 self-start sm:self-center"
-                    >
-                      🚪 Gruptan Ayrıl
-                    </button>
-                  )}
-                </div>
+      <main className="relative z-10 pt-32 pb-20 px-4 md:px-8 max-w-[1600px] mx-auto">
+        <AnimatePresence mode="wait">
+          <motion.div
+            key={activeTab + (activeGroupId || '')}
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -10 }}
+            transition={{ duration: 0.3 }}
+          >
+            {activeTab === 'Ana Sayfa' && <Home user={user} onSelectGroup={(id, name, role, isApproved) => {
+              setActiveGroupId(id);
+              setActiveGroupName(name);
+              setActiveGroupRole(role);
+              setIsActiveGroupApproved(isApproved);
+              setActiveTab('Gruplar');
+              setActiveSubTab('Harcamalar');
+            }} />}
 
-                {activeGroupRole === 'GUEST' ? (
-                  <div className="flex flex-col items-center justify-center p-20 bg-slate-900/50 border border-slate-800 rounded-3xl text-center shadow-2xl">
-                    <div className="w-24 h-24 bg-[#00f0ff]/10 rounded-full flex items-center justify-center mb-8 border border-[#00f0ff]/30 shadow-[0_0_20px_rgba(0,240,255,0.1)]">
-                      <span className="text-5xl">🤝</span>
-                    </div>
-                    <h2 className="text-3xl font-black text-white mb-4 tracking-tight">Bu Birime Katılın</h2>
-                    <p className="text-slate-400 max-w-lg mx-auto mb-10 text-lg leading-relaxed">
-                      Bu grubun harcamalarını görmek, borç durumunu takip etmek ve diğer üyelerle iletişime geçmek için katılım isteği göndermelisiniz.
-                    </p>
-                    <button 
-                      onClick={async () => {
-                        try {
-                          await apiFetch(`/groups/${activeGroupId}/join`, { method: 'POST' });
-                          alert("Katılma isteği başarıyla gönderildi!");
-                          // Listeyi yenilemek ve seçimi sıfırlamak için
-                          setActiveGroupId(null);
-                          setRefreshTrigger(prev => prev + 1);
-                        } catch (err: any) {
-                          alert(err.message || "Hata oluştu.");
-                        }
-                      }}
-                      className="px-12 py-5 bg-gradient-to-r from-[#00f0ff] to-[#00c0cc] text-slate-950 rounded-2xl font-black text-lg uppercase tracking-widest hover:scale-105 transition-all shadow-[0_0_30px_rgba(0,240,255,0.4)]"
-                    >
-                      GRUBA KATILMA DAVETİ GÖNDER
-                    </button>
-                  </div>
+            {activeTab === 'Gruplar' && (
+              <div className="space-y-10">
+                {!activeGroupId ? (
+                  <GroupList 
+                    onSelectGroup={(id, name, role, isApproved) => { 
+                      setActiveGroupId(id); 
+                      setActiveGroupName(name);
+                      setActiveGroupRole(role);
+                      setIsActiveGroupApproved(isApproved);
+                      setActiveSubTab('Harcamalar');
+                    }} 
+                    activeGroupId={activeGroupId} 
+                    refreshTrigger={refreshTrigger}
+                  />
                 ) : (
-                  <>
-                    {/* Alt Sekmeler (Sub-panel) */}
-                    <div className="bg-slate-900/40 p-2 rounded-2xl border border-slate-800/50 flex flex-wrap gap-2">
-                      {[
-                        { id: 'Harcamalar', label: '💸 Harcamalar' },
-                        { id: 'Borç Durumu', label: '📊 Borç Durumu' },
-                        { id: 'Sohbet', label: '💬 Sohbet' },
-                        { id: 'Üyeler', label: '👥 Üyeler' },
-                        ...(activeGroupRole === 'GROUP_LEADER' ? [{ id: 'Yönetim', label: '⚙️ Yönetim' }] : [])
-                      ].map(sub => (
-                        <button
-                          key={sub.id}
-                          onClick={() => setActiveSubTab(sub.id as GroupSubTabType)}
-                          className={`px-5 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all ${
-                            activeSubTab === sub.id 
-                              ? 'bg-[#00f0ff] text-slate-950 shadow-[0_0_15px_rgba(0,240,255,0.3)]'
-                              : 'bg-slate-800/50 text-slate-400 hover:text-slate-200 hover:bg-slate-800'
-                          }`}
-                        >
-                          {sub.label}
-                        </button>
-                      ))}
+                  <div className="space-y-8">
+                    {/* Premium Group Header */}
+                    <div className="bg-slate-900/40 backdrop-blur-3xl border border-white/5 p-8 md:p-10 rounded-[40px] shadow-2xl relative overflow-hidden">
+                      <div className="absolute top-0 right-0 w-64 h-64 bg-gradient-to-br from-[#00f0ff]/10 to-[#b026ff]/10 blur-3xl -mr-20 -mt-20 pointer-events-none" />
+                      
+                      <div className="flex flex-col md:flex-row md:items-center justify-between gap-8 relative z-10">
+                        <div className="flex items-center gap-6">
+                          <button 
+                            onClick={() => { setActiveGroupId(null); setActiveGroupName(null); }}
+                            className="w-12 h-12 rounded-full bg-white/5 border border-white/10 flex items-center justify-center hover:bg-white/10 transition-all group"
+                          >
+                            <ChevronRight size={20} className="rotate-180 group-hover:-translate-x-0.5 transition-transform" />
+                          </button>
+                          <div>
+                            <div className="flex items-center gap-3 mb-2">
+                              <span className={`px-2 py-0.5 rounded-md text-[9px] font-black uppercase tracking-widest ${activeGroupRole === 'GROUP_LEADER' ? 'bg-amber-500 text-black' : 'bg-[#00f0ff] text-black'}`}>
+                                {activeGroupRole === 'GROUP_LEADER' ? 'Lider' : 'Üye'}
+                              </span>
+                              {!isActiveGroupApproved && (
+                                <span className="px-2 py-0.5 rounded-md text-[9px] font-black uppercase tracking-widest bg-orange-500/20 text-orange-500 border border-orange-500/30 animate-pulse">
+                                  Onay Bekliyor
+                                </span>
+                              )}
+                            </div>
+                            <h2 className="text-4xl font-black text-white tracking-tighter">{activeGroupName}</h2>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-3">
+                          {activeGroupRole !== 'GUEST' && (
+                            <button 
+                              onClick={handleLeaveGroup}
+                              className="px-6 py-3 rounded-2xl bg-red-500/10 text-red-500 border border-red-500/20 text-xs font-black uppercase tracking-widest hover:bg-red-500 hover:text-white transition-all shadow-lg"
+                            >
+                              Gruptan Ayrıl
+                            </button>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Sub-navigation */}
+                      {activeGroupRole !== 'GUEST' && (
+                        <div className="flex flex-wrap gap-2 mt-12 bg-white/5 p-2 rounded-3xl w-fit">
+                          {[
+                            { id: 'Harcamalar', label: 'Harcamalar', icon: '💸' },
+                            { id: 'Borç Durumu', label: 'Hesaplaşma', icon: '📊' },
+                            { id: 'Sohbet', label: 'Sohbet', icon: '💬' },
+                            { id: 'Üyeler', label: 'Üyeler', icon: '👥' },
+                            ...(activeGroupRole === 'GROUP_LEADER' ? [{ id: 'Yönetim', label: 'Yönetim', icon: '⚙️' }] : [])
+                          ].map(sub => (
+                            <button
+                              key={sub.id}
+                              onClick={() => setActiveSubTab(sub.id as GroupSubTabType)}
+                              className={`px-6 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all flex items-center gap-2 ${
+                                activeSubTab === sub.id 
+                                  ? 'bg-white text-black shadow-xl scale-105' 
+                                  : 'text-slate-400 hover:text-white hover:bg-white/5'
+                              }`}
+                            >
+                              <span>{sub.icon}</span> {sub.label}
+                            </button>
+                          ))}
+                        </div>
+                      )}
                     </div>
 
-                    {/* Onay Bekleniyor Mesajı */}
-                    {!isActiveGroupApproved && (activeSubTab === 'Harcamalar' || activeSubTab === 'Borç Durumu' || activeSubTab === 'Sohbet') ? (
-                      <div className="flex flex-col items-center justify-center p-16 bg-slate-900/50 border border-slate-800 rounded-3xl text-center">
-                        <div className="w-20 h-20 bg-orange-500/10 rounded-full flex items-center justify-center mb-6 border border-orange-500/30">
-                          <span className="text-4xl">⏳</span>
+                    {activeGroupRole === 'GUEST' ? (
+                      <div className="bg-slate-900/40 backdrop-blur-3xl border border-white/5 rounded-[40px] p-20 text-center shadow-2xl">
+                        <div className="w-24 h-24 bg-[#00f0ff]/10 rounded-[32px] flex items-center justify-center mx-auto mb-10 border border-[#00f0ff]/20">
+                          <Users size={48} className="text-[#00f0ff]" />
                         </div>
-                        <h2 className="text-2xl font-bold text-slate-100 mb-2">Onay Bekleniyor</h2>
-                        <p className="text-slate-400 max-w-md mx-auto">
-                          Grup liderinin katılım isteğinizi onaylaması bekleniyor.
-                        </p>
+                        <h2 className="text-4xl font-black text-white mb-4 tracking-tighter">Birliğe Katılın</h2>
+                        <p className="text-slate-400 max-w-lg mx-auto mb-12 text-lg">Bu grubun tüm detaylarını görmek ve yönetmek için liderden katılım onayı almanız gerekmektedir.</p>
+                        <button 
+                          onClick={async () => {
+                            try {
+                              await apiFetch(`/groups/${activeGroupId}/join`, { method: 'POST' });
+                              alert("Katılma isteği başarıyla gönderildi!");
+                              setActiveGroupId(null);
+                              setRefreshTrigger(prev => prev + 1);
+                            } catch (err: any) { alert(err.message || "Hata."); }
+                          }}
+                          className="px-12 py-5 bg-[#00f0ff] text-slate-950 rounded-2xl font-black text-sm uppercase tracking-[0.2em] hover:scale-105 hover:shadow-[0_0_40px_rgba(0,240,255,0.4)] transition-all"
+                        >
+                          KATILIM İSTEĞİ GÖNDER
+                        </button>
                       </div>
                     ) : (
-                      <div className="animate-fade-in-up">
+                      <div className="animate-fade-in">
                         {activeSubTab === 'Harcamalar' && (
-                          <div className="flex flex-col w-full max-w-7xl mx-auto space-y-6">
-                            <div className="w-full flex justify-between items-center bg-slate-900 p-6 rounded-2xl border border-slate-800 shadow-xl">
+                          <div className="space-y-8">
+                            <div className="flex justify-between items-center px-4">
                               <div>
-                                <h2 className="text-2xl font-bold text-slate-100">Grup Harcamaları</h2>
-                                <p className="text-xs text-slate-500 mt-1 font-bold">{activeGroupName} grubuna ait harcamalar</p>
+                                <h3 className="text-2xl font-black text-white">Harcama Kayıtları</h3>
+                                <p className="text-slate-500 text-xs font-bold uppercase tracking-widest mt-1">Grup içi tüm finansal hareketler</p>
                               </div>
-                              <button className="px-6 py-3 rounded-xl font-bold bg-[#b026ff] text-white hover:bg-[#c455ff] transition-all shadow-lg" onClick={() => setIsModalOpen(true)}>+ Harcama Ekle</button>
+                              <button 
+                                onClick={() => setIsModalOpen(true)}
+                                className="px-8 py-4 bg-[#b026ff] text-white rounded-2xl font-black text-xs uppercase tracking-widest hover:bg-[#c455ff] hover:shadow-[0_0_30px_rgba(176,38,255,0.4)] transition-all"
+                              >
+                                + Harcama Ekle
+                              </button>
                             </div>
                             <ExpenseList groupId={activeGroupId} refreshTrigger={refreshTrigger} currentUserId={user?.id} />
-                            {isModalOpen && (
-                              <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-md p-4">
-                                <div className="relative w-full max-w-md">
-                                  <ExpenseForm groupId={activeGroupId} onSuccess={() => { setIsModalOpen(false); setRefreshTrigger(prev => prev + 1); }} onCancel={() => setIsModalOpen(false)} />
-                                </div>
-                              </div>
-                            )}
                           </div>
                         )}
 
-                        {activeSubTab === 'Borç Durumu' && (
-                          <div className="space-y-6">
-                            <div className="bg-slate-900 p-6 rounded-2xl border border-slate-800 shadow-xl mb-6">
-                                <h2 className="text-2xl font-bold text-slate-100">Borç Durumu</h2>
-                                <p className="text-xs text-slate-500 mt-1 font-bold">{activeGroupName} için hesaplaşma detayları</p>
-                            </div>
-                            <DebtList groupId={activeGroupId} />
-                          </div>
-                        )}
-                        
-                        {activeSubTab === 'Sohbet' && (
-                          <div className="space-y-6">
-                            <div className="bg-slate-900 p-6 rounded-2xl border border-slate-800 shadow-xl mb-6">
-                                <h2 className="text-2xl font-bold text-slate-100">Grup Sohbeti</h2>
-                                <p className="text-xs text-slate-500 mt-1 font-bold">{activeGroupName} grubu mesajlaşma alanı</p>
-                            </div>
-                            <GroupChat groupId={activeGroupId} currentUserId={user?.id} />
-                          </div>
-                        )}
-
-                        {activeSubTab === 'Üyeler' && (
-                          <GroupMembers groupId={activeGroupId} />
-                        )}
-
+                        {activeSubTab === 'Borç Durumu' && <DebtList groupId={activeGroupId} />}
+                        {activeSubTab === 'Sohbet' && <GroupChat groupId={activeGroupId} currentUserId={user?.id} />}
+                        {activeSubTab === 'Üyeler' && <GroupMembers groupId={activeGroupId} />}
                         {activeSubTab === 'Yönetim' && activeGroupRole === 'GROUP_LEADER' && (
-                          <GroupManagement 
-                            groupId={activeGroupId} 
-                            onUpdate={() => setRefreshTrigger(prev => prev + 1)} 
-                          />
+                          <GroupManagement groupId={activeGroupId} onUpdate={() => setRefreshTrigger(prev => prev + 1)} />
                         )}
                       </div>
                     )}
-                  </>
+                  </div>
                 )}
               </div>
             )}
+
+            {activeTab === 'Sosyal' && <SocialList currentUserId={user?.id} activeGroupId={activeGroupId} />}
+            {activeTab === 'Profil' && <ProfileSettings onUpdate={fetchUser} />}
+            {activeTab === 'Şikayet' && <ReportForm />}
+            {activeTab === 'Admin' && user?.role?.toLowerCase() === 'admin' && <AdminPanel />}
+          </motion.div>
+        </AnimatePresence>
+      </main>
+
+      {/* Modals */}
+      <AnimatePresence>
+        {isModalOpen && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+            <motion.div 
+              initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+              className="absolute inset-0 bg-slate-950/80 backdrop-blur-md" 
+              onClick={() => setIsModalOpen(false)} 
+            />
+            <motion.div 
+              initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }}
+              className="relative w-full max-w-md bg-slate-900 border border-white/10 rounded-[40px] p-8 shadow-2xl"
+            >
+              <ExpenseForm groupId={activeGroupId!} onSuccess={() => { setIsModalOpen(false); setRefreshTrigger(prev => prev + 1); }} onCancel={() => setIsModalOpen(false)} />
+            </motion.div>
           </div>
         )}
 
-        {activeTab === 'Sosyal' && <SocialList currentUserId={user?.id} activeGroupId={activeGroupId} />}
-        {activeTab === 'Profil' && <ProfileSettings onUpdate={fetchUser} />}
-        {activeTab === 'Şikayet' && <ReportForm />}
-        {activeTab === 'Admin' && user?.role?.toLowerCase() === 'admin' && <AdminPanel />}
-        
         {isCreateModalOpen && (
-          <CreateGroupModal 
-            onClose={() => setIsCreateModalOpen(false)}
-            onSuccess={() => {
-              setIsCreateModalOpen(false);
-              setRefreshTrigger(prev => prev + 1);
-              alert("Grup oluşturma isteği alındı. Onay bekleniyor.");
-            }}
-          />
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+            <motion.div 
+              initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+              className="absolute inset-0 bg-slate-950/80 backdrop-blur-md" 
+              onClick={() => setIsCreateModalOpen(false)} 
+            />
+            <motion.div 
+              initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }}
+              className="relative w-full max-w-md bg-slate-900 border border-white/10 rounded-[40px] p-8 shadow-2xl overflow-hidden"
+            >
+              <CreateGroupModal onClose={() => setIsCreateModalOpen(false)} onSuccess={() => { setIsCreateModalOpen(false); setRefreshTrigger(prev => prev + 1); }} />
+            </motion.div>
+          </div>
         )}
-      </main>
+      </AnimatePresence>
     </div>
   );
 };

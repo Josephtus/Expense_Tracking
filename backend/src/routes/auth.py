@@ -11,6 +11,7 @@ Endpoints:
 """
 
 import structlog
+from typing import List, Optional
 from datetime import date
 from uuid import uuid4
 from pydantic import BaseModel, EmailStr, ValidationError, field_validator
@@ -47,7 +48,7 @@ class RegisterRequest(BaseModel):
     mail: EmailStr
     password: str
     phone_number: str
-    age: int
+    age: Optional[int] = None
     birthday: str
 
     @field_validator("name", "surname")
@@ -158,9 +159,10 @@ def _build_user_response(user: User) -> dict:
         "mail": user.mail,
         "phone_number": user.phone_number,
         "profile_photo": user.profile_photo,
-        "age": user.age,
+        "age": user.calculated_age,
         "role": user.role.value,
         "is_active": user.is_active,
+        "birthday": user.birthday.isoformat() if user.birthday else None,
         "created_at": user.created_at.isoformat() if user.created_at else None,
     }
 
@@ -224,7 +226,7 @@ async def register(request: Request) -> HTTPResponse:
             mail=data.mail,
             password=hashed_pw,          # Düz metin ASLA saklanmaz
             phone_number=data.phone_number,
-            age=data.age,
+            age=data.age if data.age is not None else (date.today().year - date.fromisoformat(data.birthday).year - ((date.today().month, date.today().day) < (date.fromisoformat(data.birthday).month, date.fromisoformat(data.birthday).day))),
             birthday=date.fromisoformat(data.birthday),
             role=GlobalRole.USER,        # Yeni kayıtlar her zaman USER rolüyle başlar
             is_active=True,

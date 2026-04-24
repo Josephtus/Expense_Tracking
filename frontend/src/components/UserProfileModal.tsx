@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { apiFetch } from '../utils/api';
+import { apiFetch, getImageUrl } from '../utils/api';
 
 interface UserProfile {
   id: number;
@@ -65,7 +65,7 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({ userId, onCl
         <div className="px-6 pb-8 -mt-12 flex flex-col items-center">
           <div className="w-24 h-24 rounded-3xl bg-slate-800 border-4 border-slate-900 overflow-hidden shadow-xl mb-4">
             {profile.profile_photo ? (
-              <img src={`http://localhost:8000${profile.profile_photo}`} alt={profile.name} className="w-full h-full object-cover" />
+              <img src={getImageUrl(profile.profile_photo) || ''} alt={profile.name} className="w-full h-full object-cover" />
             ) : (
               <div className="w-full h-full flex items-center justify-center text-3xl font-black text-slate-600">
                 {profile.name.charAt(0)}

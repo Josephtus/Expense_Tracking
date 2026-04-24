@@ -1,258 +1,245 @@
-import React, { useState, useEffect } from 'react';
-import { apiFetch } from '../utils/api';
-import { UserProfileModal } from './UserProfileModal';
+import React, { useEffect, useState } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { apiFetch, getImageUrl } from '../utils/api';
+import { Search, UserPlus, UserMinus, Shield, X, Calendar, Mail, User as UserIcon } from 'lucide-react';
+import { Pagination } from './common/Pagination';
 
-interface UserProfile {
-  id: number;
-  name: string;
-  surname: string;
-  profile_photo: string | null;
+interface SocialListProps {
+  currentUserId: number;
 }
 
-export const SocialList: React.FC<{ currentUserId: number | null, activeGroupId: number | null }> = ({ currentUserId, activeGroupId }) => {
-  const [followers, setFollowers] = useState<UserProfile[]>([]);
-  const [following, setFollowing] = useState<UserProfile[]>([]);
-  const [searchQuery, setSearchQuery] = useState('');
-  const [searchResults, setSearchResults] = useState<UserProfile[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [searchLoading, setSearchLoading] = useState(false);
-  const [message, setMessage] = useState<{ text: string, type: 'error' | 'success' } | null>(null);
-  const [selectedUserId, setSelectedUserId] = useState<number | null>(null);
-
-  const handleInvite = async (targetUserId: number) => {
-    if (!activeGroupId) return;
-    setMessage(null);
-    try {
-      const res = await apiFetch(`/groups/${activeGroupId}/invite/${targetUserId}`, { method: 'POST' });
-      const data = await res.json();
-      setMessage({ text: data.message, type: 'success' });
-    } catch (err: any) {
-      setMessage({ text: "Davet gönderilemedi. Kullanıcı zaten üye olabilir.", type: 'error' });
-    }
-  };
+export const SocialList: React.FC<SocialListProps> = ({ currentUserId }) => {
+  const [users, setUsers] = useState<any[]>([]);
+  const [search, setSearch] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [followingIds, setFollowingIds] = useState<number[]>([]);
+  const [page, setPage] = useState(1);
+  const [totalCount, setTotalCount] = useState(0);
+  const [selectedUser, setSelectedUser] = useState<any>(null);
+  const limit = 6;
 
   const fetchSocialData = async () => {
-    if (!currentUserId) return;
+    if (!search.trim()) {
+      setUsers([]);
+      setTotalCount(0);
+      setLoading(false);
+      return;
+    }
+    setLoading(true);
     try {
-      setLoading(true);
-      const [followersRes, followingRes] = await Promise.all([
-        apiFetch(`/social/${currentUserId}/followers`),
-        apiFetch(`/social/${currentUserId}/following`)
+      // Using existing /users/search endpoint (will be updated for pagination)
+      const [usersRes, meRes] = await Promise.all([
+        apiFetch(`/users/search?q=${encodeURIComponent(search)}&page=${page}&limit=${limit}`),
+        apiFetch('/auth/me')
       ]);
+      const usersData = await usersRes.json();
+      const meData = await meRes.json();
       
-      const followersData = await followersRes.json();
-      const followingData = await followingRes.json();
+      setUsers(usersData.data || []);
+      setTotalCount(usersData.total_count || 0);
       
-      setFollowers(followersData.data);
-      setFollowing(followingData.data);
+      if (meData.user?.following) {
+        setFollowingIds(meData.user.following.map((f: any) => f.id));
+      }
     } catch (err) {
-      console.error("Sosyal veriler çekilemedi", err);
+      console.error("Sosyal veri çekme hatası:", err);
     } finally {
       setLoading(false);
     }
   };
 
   useEffect(() => {
-    fetchSocialData();
-  }, [currentUserId]);
-
-  const handleSearch = async () => {
-    if (searchQuery.length < 2) return;
-    try {
-      setSearchLoading(true);
-      const res = await apiFetch(`/users/search?q=${encodeURIComponent(searchQuery)}`);
-      const data = await res.json();
-      setSearchResults(data.data);
-    } catch (err) {
-      console.error("Arama yapılamadı", err);
-    } finally {
-      setSearchLoading(false);
-    }
-  };
-
-  const handleFollow = async (id: number) => {
-    setMessage(null);
-    try {
-      const response = await apiFetch(`/social/follow/${id}`, { method: 'POST' });
-      const data = await response.json();
-      setMessage({ text: data.message, type: 'success' });
-      setSearchResults([]);
-      setSearchQuery('');
+    const delayDebounceFn = setTimeout(() => {
       fetchSocialData();
-    } catch (err: any) {
-      setMessage({ text: "Takip işlemi başarısız.", type: 'error' });
-    }
-  };
+    }, 300);
 
-  const handleUnfollow = async (id: number) => {
+    return () => clearTimeout(delayDebounceFn);
+  }, [search, page]);
+
+  const toggleFollow = async (targetId: number, isFollowing: boolean) => {
     try {
-      await apiFetch(`/social/unfollow/${id}`, { method: 'DELETE' });
-      fetchSocialData();
+      const method = isFollowing ? 'DELETE' : 'POST';
+      const endpoint = isFollowing ? `/social/unfollow/${targetId}` : `/social/follow/${targetId}`;
+      await apiFetch(endpoint, { method });
+      setFollowingIds(prev => 
+        isFollowing ? prev.filter(id => id !== targetId) : [...prev, targetId]
+      );
     } catch (err) {
-      console.error("Takipten çıkılamadı", err);
+      console.error("Takip hatası:", err);
     }
   };
-
-  if (!currentUserId) return <p className="text-slate-400">Yükleniyor...</p>;
 
   return (
-    <div className="w-full max-w-7xl mx-auto flex flex-col gap-6 animate-fade-in-up">
-      {/* Search and Follow */}
-      <div className="bg-slate-900 border border-slate-800 p-6 rounded-2xl shadow-xl drop-shadow-glow-blue relative overflow-hidden">
-        <h3 className="text-xl font-bold text-slate-100 mb-4">Kişi Bul & Takip Et</h3>
-        <div className="flex flex-col gap-4">
-          <div className="flex gap-4">
-            <input 
-              type="text"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
-              placeholder="İsim veya e-posta ile ara..."
-              className="flex-1 bg-slate-950 border border-slate-700 rounded-xl px-4 py-2 text-slate-200 focus:outline-none focus:border-[#00f0ff] focus:ring-1 focus:ring-[#00f0ff] transition-all"
-            />
-            <button 
-              onClick={handleSearch}
-              disabled={searchLoading}
-              className="bg-slate-800 text-[#00f0ff] border border-[#00f0ff]/50 px-6 py-2 rounded-xl font-bold hover:bg-[#00f0ff]/10 hover:border-[#00f0ff] transition-all shadow-lg hover:shadow-[#00f0ff]/20"
-            >
-              {searchLoading ? 'Aranıyor...' : 'Ara'}
-            </button>
+    <div className="space-y-8 animate-fade-in">
+      {/* Search Header */}
+      <div className="bg-slate-900/40 backdrop-blur-3xl border border-white/5 p-8 rounded-[40px] shadow-2xl">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-8">
+          <div>
+            <h2 className="text-3xl font-black text-white tracking-tighter">Sosyal Ağ</h2>
+            <p className="text-slate-500 text-xs font-bold uppercase tracking-widest mt-1">Octoqus kullanıcıları ile bağlantı kur</p>
           </div>
-
-          {searchResults.length > 0 && (
-            <div className="mt-4 border-t border-slate-800 pt-4">
-              <h4 className="text-sm font-semibold text-slate-400 mb-3">Arama Sonuçları</h4>
-              <div className="flex flex-col gap-2">
-                {searchResults.map(user => (
-                  <div key={user.id} className="flex items-center justify-between p-3 rounded-xl bg-slate-800/30 border border-slate-700/50">
-                    <div className="flex items-center gap-3 cursor-pointer group" onClick={() => setSelectedUserId(user.id)}>
-                      <div className="w-8 h-8 rounded-full bg-slate-700 overflow-hidden flex items-center justify-center group-hover:ring-2 group-hover:ring-[#00f0ff]/50 transition-all">
-                        {user.profile_photo ? (
-                          <img src={`http://localhost:8000${user.profile_photo}`} alt={user.name} className="w-full h-full object-cover" />
-                        ) : (
-                          <span className="text-slate-400 text-xs font-bold">{user.name.charAt(0)}</span>
-                        )}
-                      </div>
-                      <span className="text-slate-200 text-sm font-medium group-hover:text-[#00f0ff] transition-colors">{user.name} {user.surname}</span>
-                    </div>
-                    <div className="flex gap-3">
-                      {activeGroupId && (
-                        <button 
-                          onClick={() => handleInvite(user.id)}
-                          className="text-xs font-bold text-amber-500 hover:underline"
-                        >
-                          Gruba Davet Et
-                        </button>
-                      )}
-                      <button 
-                        onClick={() => handleFollow(user.id)}
-                        className="text-xs font-bold text-[#00f0ff] hover:underline"
-                      >
-                        Takip Et
-                      </button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
+          <div className="relative w-full max-w-md group">
+            <Search className="absolute left-5 top-1/2 -translate-y-1/2 text-slate-500 group-focus-within:text-[#00f0ff] transition-colors" size={18} />
+            <input 
+              type="text" 
+              placeholder="İsim veya e-posta ile ara..."
+              className="w-full pl-14 pr-6 py-4 rounded-2xl bg-slate-950/50 border border-white/5 text-white focus:outline-none focus:border-[#00f0ff]/50 transition-all"
+              value={search}
+              onChange={(e) => { setSearch(e.target.value); setPage(1); }}
+            />
+          </div>
         </div>
+      </div>
 
-        {message && (
-          <div className={`mt-4 p-3 rounded-lg text-sm border ${message.type === 'error' ? 'bg-red-900/40 border-red-500/50 text-red-200' : 'bg-green-900/40 border-green-500/50 text-green-200'}`}>
-            {message.text}
+      <div className="bg-slate-900/40 backdrop-blur-3xl border border-white/5 rounded-[40px] p-6 md:p-10 shadow-2xl min-h-[600px] flex flex-col">
+        {loading && users.length === 0 ? (
+          <div className="flex-1 flex justify-center items-center py-20">
+            <div className="w-12 h-12 border-4 border-[#00f0ff]/20 border-t-[#00f0ff] rounded-full animate-spin" />
+          </div>
+        ) : (
+          <div className="flex-1 flex flex-col gap-4">
+            <AnimatePresence mode="popLayout">
+              {search.trim() ? (
+                <>
+                  {users.filter(u => u.id !== currentUserId).map((user, index) => {
+                    const isFollowing = followingIds.includes(user.id);
+                    return (
+                      <motion.div
+                        key={user.id}
+                        initial={{ opacity: 0, x: -20 }}
+                        animate={{ opacity: 1, x: 0 }}
+                        exit={{ opacity: 0, x: 20 }}
+                        transition={{ delay: index * 0.03 }}
+                        className="flex items-center justify-between p-4 bg-white/5 border border-white/5 rounded-2xl hover:bg-white/10 hover:border-[#00f0ff]/30 transition-all group"
+                      >
+                        <div className="flex items-center gap-4 cursor-pointer flex-1" onClick={() => setSelectedUser(user)}>
+                          <div className="w-12 h-12 rounded-xl bg-slate-800 overflow-hidden border border-white/10 shadow-lg">
+                            {user.profile_photo ? (
+                              <img src={getImageUrl(user.profile_photo)} alt={user.name} className="w-full h-full object-cover" />
+                            ) : (
+                              <div className="w-full h-full flex items-center justify-center text-lg">👤</div>
+                            )}
+                          </div>
+                          <div>
+                            <h4 className="text-sm font-black text-white tracking-tight">{user.name} {user.surname}</h4>
+                            <div className="flex items-center gap-2">
+                              <p className="text-slate-500 text-[10px] font-bold uppercase tracking-widest">{user.mail}</p>
+                              {user.age && <span className="text-[9px] text-[#00f0ff] font-black">{user.age} Yaş</span>}
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-2">
+                          <button 
+                            onClick={() => toggleFollow(user.id, isFollowing)}
+                            className={`px-6 py-2.5 rounded-xl font-black text-[10px] uppercase tracking-widest transition-all flex items-center gap-2 ${
+                              isFollowing 
+                                ? 'bg-white/5 text-white border border-white/10 hover:bg-red-500/10 hover:text-red-500' 
+                                : 'bg-[#00f0ff] text-slate-950 shadow-lg shadow-[#00f0ff]/20 hover:scale-105'
+                            }`}
+                          >
+                            {isFollowing ? <><UserMinus size={14} /> Takipten Çık</> : <><UserPlus size={14} /> Takip Et</>}
+                          </button>
+                        </div>
+                      </motion.div>
+                    );
+                  })}
+                  {users.length === 0 && !loading && (
+                    <div className="flex-1 flex flex-col items-center justify-center py-20 text-slate-600">
+                      <UserIcon size={48} className="mb-4 opacity-10" />
+                      <p className="text-sm font-black uppercase tracking-widest opacity-30">Kullanıcı Bulunamadı</p>
+                    </div>
+                  )}
+                </>
+              ) : (
+                <div className="flex-1 flex flex-col items-center justify-center py-20 text-slate-600">
+                  <Search size={48} className="mb-4 opacity-10" />
+                  <p className="text-sm font-black uppercase tracking-widest opacity-30">Arama yapmak için bir şeyler yazın</p>
+                </div>
+              )}
+            </AnimatePresence>
+            
+            {search.trim() && totalCount > limit && (
+              <div className="mt-auto pt-8">
+                <Pagination 
+                  currentPage={page}
+                  totalCount={totalCount}
+                  limit={limit}
+                  onPageChange={setPage}
+                />
+              </div>
+            )}
           </div>
         )}
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        {/* Following List */}
-        <div className="bg-slate-900 border border-slate-800 p-6 rounded-2xl shadow-xl">
-          <h3 className="text-lg font-bold text-slate-100 mb-4 border-b border-slate-800 pb-2">Takip Ettiklerim ({following.length})</h3>
-          {loading ? (
-            <p className="text-slate-500">Yükleniyor...</p>
-          ) : following.length === 0 ? (
-            <p className="text-slate-500 italic text-sm">Henüz kimseyi takip etmiyorsunuz.</p>
-          ) : (
-            <div className="flex flex-col gap-3">
-              {following.map(user => (
-                <div key={user.id} className="flex items-center justify-between p-3 rounded-xl bg-slate-800/50 border border-slate-700 hover:border-slate-600 transition-colors">
-                  <div className="flex items-center gap-3 cursor-pointer group" onClick={() => setSelectedUserId(user.id)}>
-                    <div className="w-10 h-10 rounded-full bg-slate-700 overflow-hidden flex items-center justify-center group-hover:ring-2 group-hover:ring-[#00f0ff]/50 transition-all">
-                      {user.profile_photo ? (
-                        <img src={`http://localhost:8000${user.profile_photo}`} alt={user.name} className="w-full h-full object-cover" />
-                      ) : (
-                        <span className="text-slate-400 font-bold">{user.name.charAt(0)}</span>
-                      )}
-                    </div>
-                    <div>
-                      <p className="text-slate-200 font-medium group-hover:text-[#00f0ff] transition-colors">{user.name} {user.surname}</p>
-                      <p className="text-xs text-slate-500">ID: {user.id}</p>
-                    </div>
-                  </div>
-                  <div className="flex gap-4">
-                    {activeGroupId && (
-                      <button 
-                        onClick={() => handleInvite(user.id)}
-                        className="text-xs font-bold text-amber-500 hover:underline"
-                      >
-                        Davet Et
-                      </button>
-                    )}
-                    <button 
-                      onClick={() => handleUnfollow(user.id)}
-                      className="text-xs font-bold text-red-400 hover:text-red-300 hover:underline"
-                    >
-                      Takipten Çık
-                    </button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
+      {/* Profile Detail Modal */}
+      <AnimatePresence>
+        {selectedUser && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <motion.div 
+              initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+              onClick={() => setSelectedUser(null)}
+              className="absolute inset-0 bg-slate-950/80 backdrop-blur-sm" 
+            />
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.9, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.9, y: 20 }}
+              className="relative w-full max-w-lg bg-slate-900 border border-white/10 rounded-[40px] shadow-2xl overflow-hidden"
+            >
+              <div className="absolute top-0 right-0 w-64 h-64 bg-[#00f0ff]/5 blur-3xl rounded-full -mr-32 -mt-32 pointer-events-none" />
+              
+              <button 
+                onClick={() => setSelectedUser(null)}
+                className="absolute top-6 right-6 p-2 bg-white/5 hover:bg-white/10 rounded-xl transition-all text-slate-400 hover:text-white z-10"
+              >
+                <X size={20} />
+              </button>
 
-        {/* Followers List */}
-        <div className="bg-slate-900 border border-slate-800 p-6 rounded-2xl shadow-xl">
-          <h3 className="text-lg font-bold text-slate-100 mb-4 border-b border-slate-800 pb-2">Takipçilerim ({followers.length})</h3>
-          {loading ? (
-            <p className="text-slate-500">Yükleniyor...</p>
-          ) : followers.length === 0 ? (
-            <p className="text-slate-500 italic text-sm">Henüz takipçiniz yok.</p>
-          ) : (
-            <div className="flex flex-col gap-3">
-              {followers.map(user => (
-                <div key={user.id} className="flex items-center gap-3 p-3 rounded-xl bg-slate-800/50 border border-slate-700 cursor-pointer group" onClick={() => setSelectedUserId(user.id)}>
-                  <div className="w-10 h-10 rounded-full bg-slate-700 overflow-hidden flex items-center justify-center border border-[#b026ff]/30 group-hover:ring-2 group-hover:ring-[#00f0ff]/50 transition-all">
-                    {user.profile_photo ? (
-                      <img src={`http://localhost:8000${user.profile_photo}`} alt={user.name} className="w-full h-full object-cover" />
-                    ) : (
-                      <span className="text-slate-400 font-bold">{user.name.charAt(0)}</span>
-                    )}
-                  </div>
-                  <div>
-                    <p className="text-slate-200 font-medium group-hover:text-[#00f0ff] transition-colors">{user.name} {user.surname}</p>
-                    <p className="text-xs text-[#b026ff]">ID: {user.id}</p>
-                  </div>
-                  <div className="flex-1 flex justify-end">
-                    {activeGroupId && (
-                      <button 
-                        onClick={() => handleInvite(user.id)}
-                        className="text-xs font-bold text-amber-500 hover:underline"
-                      >
-                        Davet Et
-                      </button>
-                    )}
-                  </div>
+              <div className="p-10 pt-16 flex flex-col items-center text-center relative z-0">
+                <div className="w-32 h-32 rounded-[40px] bg-slate-800 border-4 border-white/10 overflow-hidden shadow-2xl mb-8">
+                  {selectedUser.profile_photo ? (
+                    <img src={getImageUrl(selectedUser.profile_photo)} alt={selectedUser.name} className="w-full h-full object-cover" />
+                  ) : (
+                    <div className="w-full h-full flex items-center justify-center text-4xl">👤</div>
+                  )}
                 </div>
-              ))}
-            </div>
-          )}
-        </div>
-      </div>
-      {selectedUserId && (
-        <UserProfileModal userId={selectedUserId} onClose={() => setSelectedUserId(null)} />
-      )}
+                
+                <h3 className="text-3xl font-black text-white tracking-tighter mb-2">
+                  {selectedUser.name} {selectedUser.surname}
+                </h3>
+                
+                <div className="flex flex-wrap items-center justify-center gap-4 mb-10">
+                  <div className="flex items-center gap-2 text-slate-400 text-xs font-bold uppercase tracking-widest bg-white/5 px-4 py-2 rounded-full border border-white/5">
+                    <Mail size={12} className="text-[#00f0ff]" />
+                    {selectedUser.mail}
+                  </div>
+                  {selectedUser.age && (
+                    <div className="flex items-center gap-2 text-slate-400 text-xs font-bold uppercase tracking-widest bg-white/5 px-4 py-2 rounded-full border border-white/5">
+                      <Calendar size={12} className="text-[#00f0ff]" />
+                      {selectedUser.age} Yaşında
+                    </div>
+                  )}
+                </div>
+
+                <div className="w-full">
+                  <button 
+                    onClick={() => toggleFollow(selectedUser.id, followingIds.includes(selectedUser.id))}
+                    className={`w-full py-5 rounded-2xl font-black text-xs uppercase tracking-widest transition-all flex items-center justify-center gap-3 ${
+                      followingIds.includes(selectedUser.id)
+                        ? 'bg-white/5 text-white border border-white/10 hover:bg-red-500/10 hover:text-red-500'
+                        : 'bg-[#00f0ff] text-slate-950 shadow-xl shadow-[#00f0ff]/20 hover:scale-[1.02] active:scale-95'
+                    }`}
+                  >
+                    {followingIds.includes(selectedUser.id) ? <><UserMinus size={18} /> Takipten Çık</> : <><UserPlus size={18} /> Takip Et</>}
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </div>
   );
 };
