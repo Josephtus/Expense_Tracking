@@ -64,20 +64,14 @@ export const AdminUsers: React.FC = () => {
     setSortField(field);
     setSortOrder(newOrder);
     setPage(1);
-    fetchUsers(searchTerm, 1, field, newOrder);
   };
 
   useEffect(() => {
     const timer = setTimeout(() => {
-      setPage(1);
-      fetchUsers(searchTerm, 1, sortField, sortOrder);
-    }, 500);
+      fetchUsers(searchTerm, page, sortField, sortOrder);
+    }, 300);
     return () => clearTimeout(timer);
-  }, [searchTerm]);
-
-  useEffect(() => {
-    fetchUsers(searchTerm, page, sortField, sortOrder);
-  }, [page]);
+  }, [searchTerm, page, sortField, sortOrder]);
 
   const SortHeader: React.FC<{ label: string; field: string }> = ({ label, field }) => (
     <th 
@@ -161,7 +155,10 @@ export const AdminUsers: React.FC = () => {
             placeholder="İsim, Soyisim, Email veya Telefon..."
             className="bg-slate-950 border border-slate-800 rounded-xl px-10 py-2.5 text-sm w-80 focus:border-[#00f0ff] focus:ring-1 focus:ring-[#00f0ff] outline-none transition-all"
             value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
+            onChange={(e) => {
+              setSearchTerm(e.target.value);
+              setPage(1);
+            }}
           />
           <svg className="w-4 h-4 text-slate-500 absolute left-3.5 top-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />

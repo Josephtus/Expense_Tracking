@@ -368,7 +368,7 @@ async def list_groups(request: Request) -> HTTPResponse:
     offset = (page - 1) * limit
 
     async with get_session() as session:
-        from sqlalchemy import func, or_, asc, desc
+        from sqlalchemy import func, or_, asc, desc, text
         
         # Base count statement
         count_stmt = select(func.count(Group.id))
@@ -396,21 +396,26 @@ async def list_groups(request: Request) -> HTTPResponse:
                 )
             )
 
-        # Dynamic Sorting
-        valid_sort_fields = {
-            "id": Group.id,
-            "name": Group.name,
-            "is_approved": Group.is_approved,
-            "created_at": Group.created_at,
-            "member_count": "member_count"
-        }
-        
-        order_attr = valid_sort_fields.get(sort_field, Group.created_at)
-
-        if sort_order == "asc":
-            stmt = stmt.order_by(asc(order_attr))
+        # Dinamik Sıralama
+        if sort_field == "name":
+            # Doğal sıralama (Natural Sort) benzeri davranış: Önce uzunluğa sonra isme göre.
+            # Böylece 'Grup 2', 'Grup 10'dan önce gelir.
+            if sort_order == "asc":
+                stmt = stmt.order_by(asc(func.length(Group.name)), asc(Group.name))
+            else:
+                stmt = stmt.order_by(desc(func.length(Group.name)), desc(Group.name))
         else:
-            stmt = stmt.order_by(desc(order_attr))
+            valid_sort_fields = {
+                "id": Group.id,
+                "is_approved": Group.is_approved,
+                "created_at": Group.created_at,
+                "member_count": text("member_count")
+            }
+            order_attr = valid_sort_fields.get(sort_field, Group.created_at)
+            if sort_order == "asc":
+                stmt = stmt.order_by(asc(order_attr))
+            else:
+                stmt = stmt.order_by(desc(order_attr))
 
         stmt = stmt.offset(offset).limit(limit)
         results = await session.execute(stmt)
@@ -430,7 +435,9 @@ async def list_groups(request: Request) -> HTTPResponse:
             "groups": data,
             "page": page,
             "limit": limit,
-            "total_count": total_count
+            "total_count": total_count,
+            "sort": sort_field,
+            "order": sort_order
         }, status=200)
 
 
@@ -479,7 +486,7 @@ async def get_group_details(request: Request, group_id: int) -> HTTPResponse:
         # Mesajları al
         msg_stmt = (
             select(Message, User)
-            .join(User, Message.user_id == User.id)
+            .join(User, Message.sender_id == User.id)
             .where(Message.group_id == group_id)
             .order_by(Message.timestamp.desc())
             .limit(100)
