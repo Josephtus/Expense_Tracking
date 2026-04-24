@@ -1,7 +1,30 @@
 import React, { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { apiFetch } from '../../utils/api';
+import { apiFetch, getImageUrl } from '../../utils/api';
 import { Pagination } from '../common/Pagination';
+
+interface SortHeaderProps {
+  label: string;
+  field: string;
+  sortField: string;
+  sortOrder: 'asc' | 'desc';
+  onSort: (field: string) => void;
+}
+
+const SortHeader: React.FC<SortHeaderProps> = ({ label, field, sortField, sortOrder, onSort }) => (
+  <th 
+    className="py-4 px-3 cursor-pointer hover:text-[#00f0ff] transition-colors group/header whitespace-nowrap"
+    onClick={() => onSort(field)}
+  >
+    <div className="flex items-center gap-1.5">
+      <span>{label}</span>
+      <div className="flex flex-col text-[8px] opacity-30 group-hover/header:opacity-100">
+        <span className={sortField === field && sortOrder === 'asc' ? 'text-[#00f0ff]' : ''}>▲</span>
+        <span className={sortField === field && sortOrder === 'desc' ? 'text-[#00f0ff]' : ''}>▼</span>
+      </div>
+    </div>
+  </th>
+);
 
 interface GroupInfo {
   id: number;
@@ -24,6 +47,20 @@ interface AdminUser {
   created_at: string;
 }
 
+interface ActivityMessage {
+  id: number;
+  group_name: string;
+  message_text: string;
+  timestamp: string;
+}
+
+interface ActivityMembership {
+  group_id: number;
+  group_name: string;
+  role: string;
+  joined_at: string;
+}
+
 export const AdminUsers: React.FC = () => {
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [loading, setLoading] = useState(true);
@@ -34,8 +71,8 @@ export const AdminUsers: React.FC = () => {
   const [viewingDetails, setViewingDetails] = useState<number | null>(null);
   const [details, setDetails] = useState<{
     user: AdminUser;
-    messages: any[];
-    memberships: any[];
+    messages: ActivityMessage[];
+    memberships: ActivityMembership[];
   } | null>(null);
   const [loadingDetails, setLoadingDetails] = useState(false);
 
@@ -73,20 +110,7 @@ export const AdminUsers: React.FC = () => {
     return () => clearTimeout(timer);
   }, [searchTerm, page, sortField, sortOrder]);
 
-  const SortHeader: React.FC<{ label: string; field: string }> = ({ label, field }) => (
-    <th 
-      className="py-4 px-3 cursor-pointer hover:text-[#00f0ff] transition-colors group/header whitespace-nowrap"
-      onClick={() => handleSort(field)}
-    >
-      <div className="flex items-center gap-1.5">
-        <span>{label}</span>
-        <div className="flex flex-col text-[8px] opacity-30 group-hover/header:opacity-100">
-          <span className={sortField === field && sortOrder === 'asc' ? 'text-[#00f0ff]' : ''}>▲</span>
-          <span className={sortField === field && sortOrder === 'desc' ? 'text-[#00f0ff]' : ''}>▼</span>
-        </div>
-      </div>
-    </th>
-  );
+
 
   const toggleUserStatus = async (userId: number, currentStatus: boolean) => {
     try {
@@ -186,16 +210,16 @@ export const AdminUsers: React.FC = () => {
                 <table className="w-full text-left border-collapse">
                   <thead>
                     <tr className="bg-slate-800/50 text-slate-400 text-[10px] uppercase tracking-widest font-black">
-                      <SortHeader label="ID" field="id" />
-                      <SortHeader label="İsim" field="name" />
-                      <SortHeader label="Soyisim" field="surname" />
-                      <SortHeader label="Email" field="mail" />
-                      <SortHeader label="Telefon" field="phone_number" />
-                      <SortHeader label="Doğum Tarihi" field="birthday" />
+                      <SortHeader label="ID" field="id" sortField={sortField} sortOrder={sortOrder} onSort={handleSort} />
+                      <SortHeader label="İsim" field="name" sortField={sortField} sortOrder={sortOrder} onSort={handleSort} />
+                      <SortHeader label="Soyisim" field="surname" sortField={sortField} sortOrder={sortOrder} onSort={handleSort} />
+                      <SortHeader label="Email" field="mail" sortField={sortField} sortOrder={sortOrder} onSort={handleSort} />
+                      <SortHeader label="Telefon" field="phone_number" sortField={sortField} sortOrder={sortOrder} onSort={handleSort} />
+                      <SortHeader label="Doğum Tarihi" field="birthday" sortField={sortField} sortOrder={sortOrder} onSort={handleSort} />
                       <th className="py-4 px-3">Üyelikler</th>
                       <th className="py-4 px-3">Liderlik</th>
-                      <SortHeader label="Rol" field="role" />
-                      <SortHeader label="Durum" field="is_active" />
+                      <SortHeader label="Rol" field="role" sortField={sortField} sortOrder={sortOrder} onSort={handleSort} />
+                      <SortHeader label="Durum" field="is_active" sortField={sortField} sortOrder={sortOrder} onSort={handleSort} />
                       <th className="py-4 px-3 text-right">İşlemler</th>
                     </tr>
                   </thead>
@@ -342,7 +366,7 @@ export const AdminUsers: React.FC = () => {
                     <div className="bg-slate-950/50 p-6 rounded-2xl border border-slate-800">
                       <h5 className="text-xs font-black text-[#00f0ff] uppercase tracking-widest mb-4">Grup Üyelikleri</h5>
                       <div className="space-y-3">
-                        {details.memberships.map((m: any) => (
+                        {details.memberships.map((m) => (
                           <div key={m.group_id} className="flex justify-between items-center p-3 bg-slate-900 rounded-xl border border-slate-800">
                             <div>
                               <span className="text-slate-200 font-bold text-sm block">{m.group_name}</span>
@@ -360,7 +384,7 @@ export const AdminUsers: React.FC = () => {
                     <div className="bg-slate-950/50 p-6 rounded-2xl border border-slate-800">
                       <h5 className="text-xs font-black text-[#00f0ff] uppercase tracking-widest mb-4">Son Chat Mesajları</h5>
                       <div className="space-y-3">
-                        {details.messages.map((msg: any) => (
+                        {details.messages.map((msg) => (
                           <div key={msg.id} className="p-3 bg-slate-900 rounded-xl border border-slate-800">
                             <div className="flex justify-between mb-1">
                               <span className="text-[#00f0ff] font-bold text-[10px]">{msg.group_name}</span>

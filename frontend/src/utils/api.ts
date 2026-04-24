@@ -28,7 +28,7 @@ export const apiFetch = async (endpoint: string, options: RequestInit = {}) => {
       const errorData = await response.json();
       if (errorData.message) errorMsg = errorData.message;
       else if (errorData.error) errorMsg = errorData.error;
-    } catch (e) {
+    } catch {
       // JSON değilse veya parse edilemiyorsa varsayılan mesaj kalır
     }
     
@@ -36,4 +36,9 @@ export const apiFetch = async (endpoint: string, options: RequestInit = {}) => {
   }
 
   return response;
+};
+export const getImageUrl = (path: string | null) => {
+  if (!path) return null;
+  const baseUrl = 'http://localhost:8000';
+  return `${baseUrl}${path.startsWith('/') ? path : '/' + path}`;
 };
