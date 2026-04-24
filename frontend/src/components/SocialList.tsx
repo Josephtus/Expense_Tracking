@@ -1,52 +1,36 @@
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { apiFetch, getImageUrl } from '../utils/api';
-import { UserProfileModal } from './UserProfileModal';
+import { Search, UserPlus, UserCheck, UserMinus, MessageSquare, Shield, Star, Users } from 'lucide-react';
 
-interface UserProfile {
-  id: number;
-  name: string;
-  surname: string;
-  profile_photo: string | null;
+interface SocialListProps {
+  currentUserId: number;
+  activeGroupId?: number | null;
 }
 
-export const SocialList: React.FC<{ currentUserId: number | null, activeGroupId: number | null }> = ({ currentUserId, activeGroupId }) => {
-  const [followers, setFollowers] = useState<UserProfile[]>([]);
-  const [following, setFollowing] = useState<UserProfile[]>([]);
-  const [searchQuery, setSearchQuery] = useState('');
-  const [searchResults, setSearchResults] = useState<UserProfile[]>([]);
+export const SocialList: React.FC<SocialListProps> = ({ currentUserId }) => {
+  const [users, setUsers] = useState<any[]>([]);
+  const [search, setSearch] = useState('');
   const [loading, setLoading] = useState(true);
-  const [searchLoading, setSearchLoading] = useState(false);
-  const [message, setMessage] = useState<{ text: string, type: 'error' | 'success' } | null>(null);
-  const [selectedUserId, setSelectedUserId] = useState<number | null>(null);
-
-  const handleInvite = async (targetUserId: number) => {
-    if (!activeGroupId) return;
-    setMessage(null);
-    try {
-      const res = await apiFetch(`/groups/${activeGroupId}/invite/${targetUserId}`, { method: 'POST' });
-      const data = await res.json();
-      setMessage({ text: data.message, type: 'success' });
-    } catch (err) {
-      setMessage({ text: "Davet gönderilemedi. Kullanıcı zaten üye olabilir.", type: 'error' });
-    }
-  };
+  const [followingIds, setFollowingIds] = useState<number[]>([]);
 
   const fetchSocialData = async () => {
-    if (!currentUserId) return;
+    setLoading(true);
     try {
-      setLoading(true);
-      const [followersRes, followingRes] = await Promise.all([
-        apiFetch(`/social/${currentUserId}/followers`),
-        apiFetch(`/social/${currentUserId}/following`)
+      const [usersRes, meRes] = await Promise.all([
+        apiFetch(`/social/users?q=${encodeURIComponent(search)}`),
+        apiFetch('/auth/me')
       ]);
+      const usersData = await usersRes.json();
+      const meData = await meRes.json();
       
-      const followersData = await followersRes.json();
-      const followingData = await followingRes.json();
-      
-      setFollowers(followersData.data);
-      setFollowing(followingData.data);
+      setUsers(usersData.users || []);
+      // Takip edilenleri setle (Backend yapısına göre ayarla)
+      if (meData.user?.following) {
+        setFollowingIds(meData.user.following.map((f: any) => f.id));
+      }
     } catch (err) {
-      console.error("Sosyal veriler çekilemedi", err);
+      console.error("Sosyal veri çekme hatası:", err);
     } finally {
       setLoading(false);
     }
@@ -54,204 +38,117 @@ export const SocialList: React.FC<{ currentUserId: number | null, activeGroupId:
 
   useEffect(() => {
     fetchSocialData();
-  }, [currentUserId]);
+  }, [search]);
 
-  const handleSearch = async () => {
-    if (searchQuery.length < 2) return;
+  const toggleFollow = async (targetId: number, isFollowing: boolean) => {
     try {
-      setSearchLoading(true);
-      const res = await apiFetch(`/users/search?q=${encodeURIComponent(searchQuery)}`);
-      const data = await res.json();
-      setSearchResults(data.data);
+      const method = isFollowing ? 'DELETE' : 'POST';
+      await apiFetch(`/social/follow/${targetId}`, { method });
+      setFollowingIds(prev => 
+        isFollowing ? prev.filter(id => id !== targetId) : [...prev, targetId]
+      );
     } catch (err) {
-      console.error("Arama yapılamadı", err);
-    } finally {
-      setSearchLoading(false);
+      console.error("Takip hatası:", err);
     }
   };
-
-  const handleFollow = async (id: number) => {
-    setMessage(null);
-    try {
-      const response = await apiFetch(`/social/follow/${id}`, { method: 'POST' });
-      const data = await response.json();
-      setMessage({ text: data.message, type: 'success' });
-      setSearchResults([]);
-      setSearchQuery('');
-      fetchSocialData();
-    } catch (err) {
-      setMessage({ text: "Takip işlemi başarısız.", type: 'error' });
-    }
-  };
-
-  const handleUnfollow = async (id: number) => {
-    try {
-      await apiFetch(`/social/unfollow/${id}`, { method: 'DELETE' });
-      fetchSocialData();
-    } catch (err) {
-      console.error("Takipten çıkılamadı", err);
-    }
-  };
-
-  if (!currentUserId) return <p className="text-slate-400">Yükleniyor...</p>;
 
   return (
-    <div className="w-full max-w-7xl mx-auto flex flex-col gap-6 animate-fade-in-up">
-      {/* Search and Follow */}
-      <div className="bg-slate-900 border border-slate-800 p-6 rounded-2xl shadow-xl drop-shadow-glow-blue relative overflow-hidden">
-        <h3 className="text-xl font-bold text-slate-100 mb-4">Kişi Bul & Takip Et</h3>
-        <div className="flex flex-col gap-4">
-          <div className="flex gap-4">
-            <input 
-              type="text"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
-              placeholder="İsim veya e-posta ile ara..."
-              className="flex-1 bg-slate-950 border border-slate-700 rounded-xl px-4 py-2 text-slate-200 focus:outline-none focus:border-[#00f0ff] focus:ring-1 focus:ring-[#00f0ff] transition-all"
-            />
-            <button 
-              onClick={handleSearch}
-              disabled={searchLoading}
-              className="bg-slate-800 text-[#00f0ff] border border-[#00f0ff]/50 px-6 py-2 rounded-xl font-bold hover:bg-[#00f0ff]/10 hover:border-[#00f0ff] transition-all shadow-lg hover:shadow-[#00f0ff]/20"
-            >
-              {searchLoading ? 'Aranıyor...' : 'Ara'}
-            </button>
+    <div className="space-y-12 animate-fade-in">
+      {/* Search Header */}
+      <div className="bg-slate-900/40 backdrop-blur-3xl border border-white/5 p-8 md:p-10 rounded-[40px] shadow-2xl relative overflow-hidden">
+        <div className="absolute top-0 right-0 w-64 h-64 bg-[#b026ff]/5 blur-3xl rounded-full -mr-20 -mt-20 pointer-events-none" />
+        
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-8 relative z-10">
+          <div>
+            <h2 className="text-3xl font-black text-white tracking-tighter mb-2">Sosyal Ağ</h2>
+            <p className="text-slate-400 text-xs font-bold uppercase tracking-widest">Octoqus kullanıcıları ile bağlantı kur</p>
           </div>
-
-          {searchResults.length > 0 && (
-            <div className="mt-4 border-t border-slate-800 pt-4">
-              <h4 className="text-sm font-semibold text-slate-400 mb-3">Arama Sonuçları</h4>
-              <div className="flex flex-col gap-2">
-                {searchResults.map(user => (
-                  <div key={user.id} className="flex items-center justify-between p-3 rounded-xl bg-slate-800/30 border border-slate-700/50">
-                    <div className="flex items-center gap-3 cursor-pointer group" onClick={() => setSelectedUserId(user.id)}>
-                      <div className="w-8 h-8 rounded-full bg-slate-700 overflow-hidden flex items-center justify-center group-hover:ring-2 group-hover:ring-[#00f0ff]/50 transition-all">
-                        {user.profile_photo ? (
-                          <img src={getImageUrl(user.profile_photo) || ''} alt={user.name} className="w-full h-full object-cover" />
-                        ) : (
-                          <span className="text-slate-400 text-xs font-bold">{user.name.charAt(0)}</span>
-                        )}
-                      </div>
-                      <span className="text-slate-200 text-sm font-medium group-hover:text-[#00f0ff] transition-colors">{user.name} {user.surname}</span>
-                    </div>
-                    <div className="flex gap-3">
-                      {activeGroupId && (
-                        <button 
-                          onClick={() => handleInvite(user.id)}
-                          className="text-xs font-bold text-amber-500 hover:underline"
-                        >
-                          Gruba Davet Et
-                        </button>
-                      )}
-                      <button 
-                        onClick={() => handleFollow(user.id)}
-                        className="text-xs font-bold text-[#00f0ff] hover:underline"
-                      >
-                        Takip Et
-                      </button>
-                    </div>
-                  </div>
-                ))}
-              </div>
+          <div className="relative w-full max-w-md group">
+            <div className="absolute left-5 top-1/2 -translate-y-1/2 text-slate-500 group-focus-within:text-[#b026ff] transition-colors">
+              <Search size={20} />
             </div>
-          )}
-        </div>
-
-        {message && (
-          <div className={`mt-4 p-3 rounded-lg text-sm border ${message.type === 'error' ? 'bg-red-900/40 border-red-500/50 text-red-200' : 'bg-green-900/40 border-green-500/50 text-green-200'}`}>
-            {message.text}
+            <input 
+              type="text" 
+              placeholder="İsim veya email ile ara..."
+              className="w-full pl-14 pr-6 py-5 rounded-[24px] bg-slate-950/50 border border-white/5 text-white placeholder:text-slate-600 focus:outline-none focus:border-[#b026ff]/50 focus:bg-slate-950 transition-all shadow-inner"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+            />
           </div>
-        )}
+        </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        {/* Following List */}
-        <div className="bg-slate-900 border border-slate-800 p-6 rounded-2xl shadow-xl">
-          <h3 className="text-lg font-bold text-slate-100 mb-4 border-b border-slate-800 pb-2">Takip Ettiklerim ({following.length})</h3>
-          {loading ? (
-            <p className="text-slate-500">Yükleniyor...</p>
-          ) : following.length === 0 ? (
-            <p className="text-slate-500 italic text-sm">Henüz kimseyi takip etmiyorsunuz.</p>
-          ) : (
-            <div className="flex flex-col gap-3">
-              {following.map(user => (
-                <div key={user.id} className="flex items-center justify-between p-3 rounded-xl bg-slate-800/50 border border-slate-700 hover:border-slate-600 transition-colors">
-                  <div className="flex items-center gap-3 cursor-pointer group" onClick={() => setSelectedUserId(user.id)}>
-                    <div className="w-10 h-10 rounded-full bg-slate-700 overflow-hidden flex items-center justify-center group-hover:ring-2 group-hover:ring-[#00f0ff]/50 transition-all">
-                      {user.profile_photo ? (
-                        <img src={getImageUrl(user.profile_photo) || ''} alt={user.name} className="w-full h-full object-cover" />
-                      ) : (
-                        <span className="text-slate-400 font-bold">{user.name.charAt(0)}</span>
+      {loading && users.length === 0 ? (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {[1,2,3,4,5,6].map(i => (
+            <div key={i} className="h-64 bg-slate-900/40 rounded-[40px] border border-white/5 animate-pulse" />
+          ))}
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          <AnimatePresence>
+            {users.map((user, index) => {
+              const isFollowing = followingIds.includes(user.id);
+              if (user.id === currentUserId) return null;
+              
+              return (
+                <motion.div
+                  key={user.id}
+                  initial={{ opacity: 0, scale: 0.9 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  transition={{ delay: index * 0.05 }}
+                  whileHover={{ y: -5 }}
+                  className="bg-slate-900/40 backdrop-blur-md border border-white/5 p-8 rounded-[40px] hover:border-[#b026ff]/30 transition-all shadow-xl relative overflow-hidden"
+                >
+                  <div className="flex items-center gap-6 mb-8">
+                    <div className="relative">
+                      <div className="w-16 h-16 rounded-3xl bg-slate-800 overflow-hidden border-2 border-white/5">
+                        {user.profile_photo ? (
+                          <img src={getImageUrl(user.profile_photo)} alt={user.name} className="w-full h-full object-cover" />
+                        ) : (
+                          <div className="w-full h-full flex items-center justify-center text-xl">👤</div>
+                        )}
+                      </div>
+                      {user.role === 'ADMIN' && (
+                        <div className="absolute -top-2 -right-2 w-6 h-6 bg-amber-500 rounded-full border-2 border-slate-900 flex items-center justify-center shadow-lg">
+                          <Shield size={10} className="text-slate-900" />
+                        </div>
                       )}
                     </div>
                     <div>
-                      <p className="text-slate-200 font-medium group-hover:text-[#00f0ff] transition-colors">{user.name} {user.surname}</p>
-                      <p className="text-xs text-slate-500">ID: {user.id}</p>
+                      <h4 className="text-lg font-black text-white tracking-tight line-clamp-1">{user.name} {user.surname}</h4>
+                      <p className="text-slate-500 text-[10px] font-bold uppercase tracking-widest">{user.mail}</p>
                     </div>
                   </div>
-                  <div className="flex gap-4">
-                    {activeGroupId && (
-                      <button 
-                        onClick={() => handleInvite(user.id)}
-                        className="text-xs font-bold text-amber-500 hover:underline"
-                      >
-                        Davet Et
-                      </button>
-                    )}
+
+                  <div className="flex gap-3">
                     <button 
-                      onClick={() => handleUnfollow(user.id)}
-                      className="text-xs font-bold text-red-400 hover:text-red-300 hover:underline"
+                      onClick={() => toggleFollow(user.id, isFollowing)}
+                      className={`flex-1 py-4 rounded-2xl font-black text-[10px] uppercase tracking-widest transition-all flex items-center justify-center gap-2 ${
+                        isFollowing 
+                          ? 'bg-white/5 text-white border border-white/10 hover:bg-red-500/10 hover:text-red-500 hover:border-red-500/20' 
+                          : 'bg-[#b026ff] text-white shadow-[0_0_20px_rgba(176,38,255,0.3)] hover:scale-105'
+                      }`}
                     >
-                      Takipten Çık
+                      {isFollowing ? (
+                        <>
+                          <UserMinus size={14} /> Takipten Çık
+                        </>
+                      ) : (
+                        <>
+                          <UserPlus size={14} /> Takip Et
+                        </>
+                      )}
+                    </button>
+                    <button className="p-4 rounded-2xl bg-white/5 text-slate-400 hover:bg-white/10 hover:text-white transition-all border border-white/5">
+                      <MessageSquare size={16} />
                     </button>
                   </div>
-                </div>
-              ))}
-            </div>
-          )}
+                </motion.div>
+              );
+            })}
+          </AnimatePresence>
         </div>
-
-        {/* Followers List */}
-        <div className="bg-slate-900 border border-slate-800 p-6 rounded-2xl shadow-xl">
-          <h3 className="text-lg font-bold text-slate-100 mb-4 border-b border-slate-800 pb-2">Takipçilerim ({followers.length})</h3>
-          {loading ? (
-            <p className="text-slate-500">Yükleniyor...</p>
-          ) : followers.length === 0 ? (
-            <p className="text-slate-500 italic text-sm">Henüz takipçiniz yok.</p>
-          ) : (
-            <div className="flex flex-col gap-3">
-              {followers.map(user => (
-                <div key={user.id} className="flex items-center gap-3 p-3 rounded-xl bg-slate-800/50 border border-slate-700 cursor-pointer group" onClick={() => setSelectedUserId(user.id)}>
-                  <div className="w-10 h-10 rounded-full bg-slate-700 overflow-hidden flex items-center justify-center border border-[#b026ff]/30 group-hover:ring-2 group-hover:ring-[#00f0ff]/50 transition-all">
-                    {user.profile_photo ? (
-                      <img src={getImageUrl(user.profile_photo) || ''} alt={user.name} className="w-full h-full object-cover" />
-                    ) : (
-                      <span className="text-slate-400 font-bold">{user.name.charAt(0)}</span>
-                    )}
-                  </div>
-                  <div>
-                    <p className="text-slate-200 font-medium group-hover:text-[#00f0ff] transition-colors">{user.name} {user.surname}</p>
-                    <p className="text-xs text-[#b026ff]">ID: {user.id}</p>
-                  </div>
-                  <div className="flex-1 flex justify-end">
-                    {activeGroupId && (
-                      <button 
-                        onClick={() => handleInvite(user.id)}
-                        className="text-xs font-bold text-amber-500 hover:underline"
-                      >
-                        Davet Et
-                      </button>
-                    )}
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      </div>
-      {selectedUserId && (
-        <UserProfileModal userId={selectedUserId} onClose={() => setSelectedUserId(null)} />
       )}
     </div>
   );

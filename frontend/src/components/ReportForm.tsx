@@ -1,82 +1,103 @@
 import React, { useState } from 'react';
+import { motion } from 'framer-motion';
 import { apiFetch } from '../utils/api';
+import { Flag, AlertTriangle, Send, ShieldAlert, MessageSquare } from 'lucide-react';
 
 export const ReportForm: React.FC = () => {
-  const [targetUserId, setTargetUserId] = useState('');
-  const [aciklama, setAciklama] = useState('');
-  const [loading, setLoading] = useState(false);
-  const [message, setMessage] = useState<{text: string, type: 'success'|'error'} | null>(null);
+  const [content, setContent] = useState('');
+  const [category, setCategory] = useState('GENEL');
+  const [sending, setSending] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setMessage(null);
-    setLoading(true);
-
+    if (!content.trim()) return;
+    setSending(true);
     try {
-      const response = await apiFetch(`/reports/user/${targetUserId}`, {
+      await apiFetch('/reports', {
         method: 'POST',
-        body: JSON.stringify({ aciklama })
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ content, category })
       });
-      const data = await response.json();
-      setMessage({ text: data.message, type: 'success' });
-      setTargetUserId('');
-      setAciklama('');
+      alert("Şikayetiniz/Geri bildiriminiz başarıyla iletildi. Teşekkürler!");
+      setContent('');
     } catch (err: any) {
-      setMessage({ text: "Şikayet gönderilemedi. Lütfen bilgileri kontrol edin.", type: 'error' });
+      alert(err.message || "Gönderim sırasında hata oluştu.");
     } finally {
-      setLoading(false);
+      setSending(false);
     }
   };
 
+  const categories = [
+    { id: 'GENEL', label: 'Genel Geri Bildirim', icon: MessageSquare },
+    { id: 'HATA', label: 'Hata Bildirimi', icon: AlertTriangle },
+    { id: 'KOTU_KULLANIM', label: 'Kötüye Kullanım', icon: ShieldAlert },
+    { id: 'DIGER', label: 'Diğer', icon: Flag }
+  ];
+
   return (
-    <div className="bg-slate-900 border border-slate-800 p-6 rounded-2xl shadow-xl max-w-lg mx-auto animate-fade-in-up">
-      <div className="flex items-center gap-3 mb-6 border-b border-slate-800 pb-4">
-        <div className="p-2 bg-red-500/10 rounded-lg border border-red-500/30 text-red-400">
-          <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
+    <div className="max-w-4xl mx-auto space-y-12 animate-fade-in">
+      <div className="bg-slate-900/40 backdrop-blur-3xl border border-white/5 rounded-[40px] p-8 md:p-12 shadow-2xl relative overflow-hidden">
+        <div className="absolute top-0 right-0 w-80 h-80 bg-red-500/5 blur-3xl rounded-full -mr-32 -mt-32 pointer-events-none" />
+        
+        <div className="relative z-10 text-center md:text-left">
+          <h2 className="text-4xl font-black text-white tracking-tighter mb-4">Destek & Geri Bildirim</h2>
+          <p className="text-slate-400 max-w-lg text-lg leading-relaxed">
+            Octoqus deneyimini iyileştirmemize yardımcı olun. Karşılaştığınız sorunları veya önerilerinizi buradan iletebilirsiniz.
+          </p>
         </div>
-        <h3 className="text-xl font-bold text-slate-100">Kullanıcı Şikayet Et</h3>
       </div>
 
-      <form onSubmit={handleSubmit} className="flex flex-col gap-4">
-        <div>
-          <label className="block text-sm font-medium text-slate-400 mb-1">Şikayet Edilecek Kullanıcı ID</label>
-          <input 
-            type="number" 
-            required
-            className="w-full p-2.5 rounded-xl bg-slate-950 border border-slate-800 text-slate-200 focus:outline-none focus:border-red-500/50 focus:ring-1 focus:ring-red-500/50 transition-all"
-            value={targetUserId}
-            onChange={(e) => setTargetUserId(e.target.value)}
-            placeholder="Örn: 42"
-          />
-        </div>
-        
-        <div>
-          <label className="block text-sm font-medium text-slate-400 mb-1">Açıklama</label>
-          <textarea 
-            required
-            rows={4}
-            minLength={10}
-            className="w-full p-2.5 rounded-xl bg-slate-950 border border-slate-800 text-slate-200 focus:outline-none focus:border-red-500/50 focus:ring-1 focus:ring-red-500/50 transition-all resize-none"
-            value={aciklama}
-            onChange={(e) => setAciklama(e.target.value)}
-            placeholder="Lütfen şikayet nedeninizi detaylıca açıklayın (En az 10 karakter)..."
-          />
-        </div>
-
-        {message && (
-          <div className={`p-3 rounded-lg text-sm border ${message.type === 'error' ? 'bg-red-900/30 text-red-400 border-red-500/30' : 'bg-green-900/30 text-green-400 border-green-500/30'}`}>
-            {message.text}
+      <div className="bg-slate-900/40 backdrop-blur-3xl border border-white/5 rounded-[40px] p-8 md:p-12 shadow-2xl">
+        <form onSubmit={handleSubmit} className="space-y-10">
+          <div className="space-y-6">
+            <label className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em] ml-2">Kategori Seçin</label>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+              {categories.map((cat) => (
+                <button
+                  key={cat.id}
+                  type="button"
+                  onClick={() => setCategory(cat.id)}
+                  className={`p-6 rounded-[32px] border transition-all flex flex-col items-center text-center gap-4 ${
+                    category === cat.id 
+                      ? 'bg-white text-black border-white shadow-xl scale-105' 
+                      : 'bg-white/5 text-slate-500 border-white/5 hover:border-white/20 hover:text-white'
+                  }`}
+                >
+                  <cat.icon size={24} />
+                  <span className="text-[10px] font-black uppercase tracking-widest leading-none">{cat.label}</span>
+                </button>
+              ))}
+            </div>
           </div>
-        )}
 
-        <button 
-          type="submit" 
-          disabled={loading || !targetUserId || aciklama.length < 10}
-          className="mt-2 w-full py-3 rounded-xl font-bold bg-red-500/20 text-red-400 hover:bg-red-500/30 border border-red-500/30 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-        >
-          {loading ? "Gönderiliyor..." : "Şikayeti İlet"}
-        </button>
-      </form>
+          <div className="space-y-4">
+            <label className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em] ml-2">Mesajınız</label>
+            <textarea 
+              className="w-full bg-slate-950/50 border border-white/5 rounded-[32px] p-8 text-white focus:outline-none focus:border-red-500/50 transition-all min-h-[250px] font-medium resize-none shadow-inner"
+              placeholder="Sorunu veya önerinizi detaylıca açıklayın..."
+              value={content}
+              onChange={(e) => setContent(e.target.value)}
+              required
+            />
+          </div>
+
+          <div className="flex flex-col md:flex-row gap-8 md:items-center justify-between pt-6 border-t border-white/5">
+            <div className="flex items-center gap-4 text-slate-500">
+              <ShieldAlert size={20} className="text-red-500/50" />
+              <p className="text-xs font-medium max-w-xs">
+                Bildiriminiz admin ekibimiz tarafından incelenecek ve en kısa sürede aksiyon alınacaktır.
+              </p>
+            </div>
+            <button 
+              type="submit"
+              disabled={sending}
+              className="px-12 py-5 bg-white text-slate-950 rounded-2xl font-black text-sm uppercase tracking-widest hover:bg-red-500 hover:text-white hover:shadow-[0_0_40px_rgba(239,68,68,0.3)] transition-all disabled:opacity-50 flex items-center justify-center gap-3 active:scale-95"
+            >
+              {sending ? 'Gönderiliyor...' : <><Send size={20} /> Bildirimi Gönder</>}
+            </button>
+          </div>
+        </form>
+      </div>
     </div>
   );
 };
