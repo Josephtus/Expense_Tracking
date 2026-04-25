@@ -119,14 +119,69 @@ export const GroupInsights: React.FC<GroupInsightsProps> = ({ groupId, currentUs
     : currentDate.getFullYear().toString();
 
   const handleNav = (dir: number) => {
-    const d = new Date(currentDate);
-    if (filterType === 'Ay') {
-      d.setMonth(d.getMonth() + dir);
-    } else if (filterType === 'Yıl') {
-      d.setFullYear(d.getFullYear() + dir);
+    if (filterType === 'Tümü') return;
+    
+    // Verinin olduğu en yakın tarihi bul
+    let d = new Date(currentDate);
+    let found = false;
+    
+    // Maksimum 24 ay/yıl ileri/geri ara (sonsuz döngü koruması)
+    for (let i = 0; i < 24; i++) {
+      if (filterType === 'Ay') d.setMonth(d.getMonth() + dir);
+      else d.setFullYear(d.getFullYear() + dir);
+      
+      const hasData = expenses.some(e => {
+        const ed = new Date(e.date);
+        if (filterType === 'Ay') return ed.getMonth() === d.getMonth() && ed.getFullYear() === d.getFullYear();
+        return ed.getFullYear() === d.getFullYear();
+      });
+      
+      if (hasData) {
+        found = true;
+        break;
+      }
+      
+      // Veri sınırlarını aştıysak dur
+      if (dir < 0 && d < dataBoundaries.min) break;
+      if (dir > 0 && d > dataBoundaries.max) break;
     }
-    setCurrentDate(d);
+    
+    if (found) setCurrentDate(new Date(d));
   };
+
+  // Veri sınırlarını hesapla
+  const dataBoundaries = useMemo(() => {
+    if (expenses.length === 0) return { min: new Date(), max: new Date() };
+    const dates = expenses.map(e => new Date(e.date).getTime());
+    return {
+      min: new Date(Math.min(...dates)),
+      max: new Date(Math.max(...dates))
+    };
+  }, [expenses]);
+
+  const canNavPrev = useMemo(() => {
+    if (filterType === 'Tümü' || expenses.length === 0) return false;
+    return expenses.some(e => {
+      const ed = new Date(e.date);
+      if (filterType === 'Ay') {
+        return ed.getFullYear() < currentDate.getFullYear() || 
+               (ed.getFullYear() === currentDate.getFullYear() && ed.getMonth() < currentDate.getMonth());
+      }
+      return ed.getFullYear() < currentDate.getFullYear();
+    });
+  }, [currentDate, filterType, expenses]);
+
+  const canNavNext = useMemo(() => {
+    if (filterType === 'Tümü' || expenses.length === 0) return false;
+    return expenses.some(e => {
+      const ed = new Date(e.date);
+      if (filterType === 'Ay') {
+        return ed.getFullYear() > currentDate.getFullYear() || 
+               (ed.getFullYear() === currentDate.getFullYear() && ed.getMonth() > currentDate.getMonth());
+      }
+      return ed.getFullYear() > currentDate.getFullYear();
+    });
+  }, [currentDate, filterType, expenses]);
 
   if (loading) {
     return (
@@ -160,39 +215,69 @@ export const GroupInsights: React.FC<GroupInsightsProps> = ({ groupId, currentUs
 
             {filterType !== 'Tümü' && (
               <div className="flex items-center justify-between py-6 border-y border-white/5">
-                <button onClick={() => handleNav(-1)} className="w-10 h-10 rounded-full bg-white/5 flex items-center justify-center hover:bg-[#00f0ff] hover:text-black transition-all">
+                <button 
+                  onClick={() => canNavPrev && handleNav(-1)} 
+                  disabled={!canNavPrev}
+                  className={`w-10 h-10 rounded-full flex items-center justify-center transition-all ${canNavPrev ? 'bg-white/5 hover:bg-[#00f0ff] hover:text-black cursor-pointer' : 'bg-white/2 opacity-20 cursor-not-allowed'}`}
+                >
                   <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M15 19l-7-7 7-7" /></svg>
                 </button>
                 <span className="text-lg font-black text-white uppercase tracking-widest">{monthName}</span>
-                <button onClick={() => handleNav(1)} className="w-10 h-10 rounded-full bg-white/5 flex items-center justify-center hover:bg-[#00f0ff] hover:text-black transition-all">
+                <button 
+                  onClick={() => canNavNext && handleNav(1)} 
+                  disabled={!canNavNext}
+                  className={`w-10 h-10 rounded-full flex items-center justify-center transition-all ${canNavNext ? 'bg-white/5 hover:bg-[#00f0ff] hover:text-black cursor-pointer' : 'bg-white/2 opacity-20 cursor-not-allowed'}`}
+                >
                   <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M9 5l7 7-7 7" /></svg>
                 </button>
               </div>
             )}
 
-            <div className="flex flex-col sm:flex-row items-center gap-10 bg-white/5 p-8 rounded-[32px] border border-white/5">
-              <div className="relative w-48 h-48 flex-shrink-0">
+            <div className="flex flex-col sm:flex-row items-center gap-12 bg-white/5 p-10 rounded-[40px] border border-white/5">
+              <div className="relative w-56 h-56 flex-shrink-0">
                 {stats.total > 0 ? (
-                  <svg className="w-full h-full rotate-[-90deg]" viewBox="0 0 32 32">
+                  <svg className="w-full h-full rotate-[-90deg] overflow-visible" viewBox="-18 -18 36 36">
                     {stats.categories.map((c, i) => {
-                      const percentage = (c.total / stats.total) * 100;
-                      let offset = 0;
-                      for(let j=0; j<i; j++) offset += (stats.categories[j].total / stats.total) * 100;
+                      const percentage = (c.total / stats.total);
+                      let startAngle = 0;
+                      for(let j=0; j<i; j++) startAngle += (stats.categories[j].total / stats.total) * 2 * Math.PI;
+                      const endAngle = startAngle + percentage * 2 * Math.PI;
+                      const midAngle = startAngle + (percentage * Math.PI); // Dilimin tam ortası
+                      
+                      const x1 = Math.cos(startAngle) * 16;
+                      const y1 = Math.sin(startAngle) * 16;
+                      const x2 = Math.cos(endAngle) * 16;
+                      const y2 = Math.sin(endAngle) * 16;
+                      
+                      const largeArcFlag = percentage > 0.5 ? 1 : 0;
+                      const d = `M 0 0 L ${x1} ${y1} A 16 16 0 ${largeArcFlag} 1 ${x2} ${y2} Z`;
+
+                      // Exploding effect calculations
+                      const explodeX = activeIndex === i ? Math.cos(midAngle) * 1.5 : 0;
+                      const explodeY = activeIndex === i ? Math.sin(midAngle) * 1.5 : 0;
+
                       return (
-                        <motion.circle 
+                        <motion.path 
                           key={i} 
-                          r="16" cx="16" cy="16" 
-                          fill="transparent" 
-                          stroke={c.color} 
-                          strokeWidth="32" 
-                          strokeDasharray={`${percentage} 100`} 
-                          strokeDashoffset={-offset}
-                          initial={{ strokeDasharray: "0 100" }}
-                          animate={{ strokeDasharray: `${percentage} 100` }}
-                          transition={{ duration: 1, delay: i * 0.1, ease: "easeOut" }}
+                          d={d}
+                          fill={c.color}
+                          initial={{ opacity: 0, scale: 0 }}
+                          animate={{ 
+                            opacity: 1, 
+                            scale: activeIndex === i ? 1.05 : 1,
+                            x: explodeX,
+                            y: explodeY,
+                            filter: activeIndex === i ? 'brightness(1.2) drop-shadow(0 0 12px '+c.color+'66)' : 'brightness(1)'
+                          }}
+                          transition={{ 
+                            duration: 0.2, // Daha hızlı animasyon
+                            type: 'spring',
+                            stiffness: 400,
+                            damping: 25
+                          }}
                           onMouseEnter={() => setActiveIndex(i)}
                           onMouseLeave={() => setActiveIndex(null)}
-                          className="cursor-pointer hover:opacity-80 transition-opacity"
+                          className="cursor-pointer transition-all duration-150"
                         />
                       );
                     })}
@@ -200,49 +285,48 @@ export const GroupInsights: React.FC<GroupInsightsProps> = ({ groupId, currentUs
                 ) : (
                   <div className="w-full h-full rounded-full border-4 border-white/5 flex items-center justify-center text-[10px] text-slate-500 font-bold uppercase">Veri Yok</div>
                 )}
-                <div className="absolute inset-0 bg-[#0f172a] rounded-full scale-[0.6] flex flex-col items-center justify-center text-center p-4 transition-all">
-                  <AnimatePresence mode="wait">
-                    {activeIndex !== null ? (
-                      <motion.div
-                        key="active"
-                        initial={{ opacity: 0, scale: 0.8 }}
-                        animate={{ opacity: 1, scale: 1 }}
-                        exit={{ opacity: 0, scale: 0.8 }}
-                        className="w-full"
-                      >
-                        <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest">{stats.categories[activeIndex].label}</p>
-                        <p className="text-sm font-black text-[#00f0ff] truncate">₺{stats.categories[activeIndex].total.toLocaleString('tr-TR')}</p>
-                      </motion.div>
-                    ) : (
-                      <motion.div
-                        key="total"
-                        initial={{ opacity: 0, scale: 0.8 }}
-                        animate={{ opacity: 1, scale: 1 }}
-                        exit={{ opacity: 0, scale: 0.8 }}
-                        className="w-full"
-                      >
-                        <p className="text-[8px] font-black text-slate-500 uppercase tracking-widest">TOPLAM</p>
-                        <p className="text-sm font-black text-white truncate">₺{stats.total > 1000 ? (stats.total/1000).toFixed(1)+'K' : stats.total.toFixed(0)}</p>
-                      </motion.div>
-                    )}
-                  </AnimatePresence>
-                </div>
+                
+                {/* Seçili Kategori Bilgisi (Grafik Altında/Üstünde Değil, Ayrı Bir Alan Olarak Tasarlandı) */}
+                {activeIndex !== null && (
+                   <motion.div 
+                     initial={{ opacity: 0, y: 10 }}
+                     animate={{ opacity: 1, y: 0 }}
+                     className="absolute -bottom-6 left-1/2 -translate-x-1/2 whitespace-nowrap bg-slate-800/90 backdrop-blur-md px-3 py-1.5 rounded-xl border border-white/10 shadow-2xl z-50 pointer-events-none"
+                   >
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm">{stats.categories[activeIndex].icon}</span>
+                        <span className="text-[10px] font-black text-white uppercase tracking-widest">{stats.categories[activeIndex].label}</span>
+                        <span className="text-[10px] font-black text-[#00f0ff]">%{( (stats.categories[activeIndex].total / stats.total) * 100).toFixed(1)}</span>
+                      </div>
+                   </motion.div>
+                )}
               </div>
 
-              <div className="flex-1 space-y-3 w-full">
-                {stats.categories.slice(0, 4).map((c, i) => (
-                  <div key={i} className="flex items-center justify-between group">
-                    <div className="flex items-center gap-2">
-                      <div className="w-2 h-2 rounded-full" style={{ backgroundColor: c.color }} />
-                      <span className="text-xl">{c.icon}</span>
-                      <span className="text-[11px] font-black text-slate-400 uppercase tracking-wider group-hover:text-white transition-colors">{c.label}</span>
-                    </div>
-                    <span className="text-xs font-black text-white">₺{c.total.toLocaleString('tr-TR')}</span>
-                  </div>
-                ))}
-                {stats.categories.length > 4 && (
-                  <p className="text-[9px] font-bold text-slate-500 uppercase tracking-widest text-center pt-2">+ {stats.categories.length - 4} Kategori Daha</p>
-                )}
+              <div className="flex-1 w-full">
+                <div className="mb-6">
+                  <p className="text-[10px] font-black text-slate-500 uppercase tracking-[0.3em] mb-1">TOPLAM HARCAMA</p>
+                  <p className="text-3xl font-black text-white tracking-tighter">₺{stats.total.toLocaleString('tr-TR')}</p>
+                </div>
+                <div className="max-h-[180px] overflow-y-auto pr-4 custom-scrollbar space-y-2">
+                  {stats.categories.map((c, i) => (
+                    <motion.div 
+                      key={i} 
+                      onMouseEnter={() => setActiveIndex(i)}
+                      onMouseLeave={() => setActiveIndex(null)}
+                      initial={{ opacity: 0, x: -10 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      transition={{ delay: i * 0.02 }}
+                      className={`flex items-center justify-between p-2 rounded-xl transition-all cursor-pointer ${activeIndex === i ? 'bg-white/10 scale-[1.02]' : 'hover:bg-white/5'}`}
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className="w-3 h-3 rounded-full shadow-[0_0_10px_rgba(0,0,0,0.5)] flex-shrink-0" style={{ backgroundColor: c.color }} />
+                        <span className="text-xl flex-shrink-0">{c.icon}</span>
+                        <span className="text-[11px] font-black text-slate-400 uppercase tracking-wider truncate max-w-[120px]">{c.label}</span>
+                      </div>
+                      <span className="text-xs font-black text-white flex-shrink-0">₺{c.total.toLocaleString('tr-TR')}</span>
+                    </motion.div>
+                  ))}
+                </div>
               </div>
             </div>
 
@@ -266,7 +350,7 @@ export const GroupInsights: React.FC<GroupInsightsProps> = ({ groupId, currentUs
                   key={i} 
                   initial={{ opacity: 0, x: 20 }}
                   animate={{ opacity: 1, x: 0 }}
-                  transition={{ delay: i * 0.05 }}
+                  transition={{ delay: i * 0.02, duration: 0.2 }}
                   className="group bg-white/5 p-5 rounded-[24px] border border-transparent hover:border-[#00f0ff]/30 transition-all flex items-center justify-between"
                 >
                   <div className="flex items-center gap-4">
@@ -282,6 +366,7 @@ export const GroupInsights: React.FC<GroupInsightsProps> = ({ groupId, currentUs
                             <motion.div 
                               initial={{ width: 0 }}
                               animate={{ width: `${(c.total / stats.total) * 100}%` }}
+                              transition={{ duration: 0.3, delay: i * 0.02 }}
                               className="h-full" 
                               style={{ backgroundColor: c.color }}
                             />
