@@ -8,23 +8,23 @@ from sqlalchemy.orm import selectinload
 from src.database import engine, Base, dispose_engine, get_session
 from src.models import (
     User, Group, GroupMember, GlobalRole, GroupMemberRole, 
-    Message, Report, ReportStatus, follower_table, Expense
+    Message, Report, ReportStatus, follower_table, Expense, SettlementStatus
 )
 from src.services.security import hash_password
 
 logger = structlog.get_logger(__name__)
 
-# TEST İÇİN ÜRETİLECEK VERİ SAYILARI
-NUM_GROUPS = 40
-NUM_USERS = 200
-MESSAGES_PER_GROUP = 30
-EXPENSES_PER_GROUP = 25
-REPORTS_COUNT = 30
-FOLLOWS_COUNT = 400
+# MEGA SEEDER AYARLARI
+NUM_USERS = 350
+NUM_GROUPS = 70
+EXPENSES_PER_GROUP = 50
+MESSAGES_PER_GROUP = 60
+REPORTS_COUNT = 80
+FOLLOWS_COUNT = 1500
 
 # GERÇEKÇİ VERİ LİSTELERİ
-NAMES = ["Ahmet", "Mehmet", "Ayşe", "Fatma", "Can", "Ece", "Burak", "Selin", "Deniz", "Mert", "Zeynep", "Ali", "Veli", "Derya", "Oğuz", "Aslı", "Kerem", "Gökhan", "İrem", "Büşra", "Emre", "Sibel", "Tuna", "Lara", "Cem", "Gizem", "Onur", "Melis", "Bora", "İdil"]
-SURNAMES = ["Yılmaz", "Kaya", "Demir", "Çelik", "Şahin", "Öztürk", "Arslan", "Doğan", "Kılıç", "Aydın", "Özkan", "Aslan", "Bulut", "Yıldız", "Güneş", "Korkmaz", "Erdoğan", "Yavuz", "Tekin", "Aksoy", "Kocaman", "Sarı", "Kurt", "Özcan"]
+NAMES = ["Can", "Mert", "Deniz", "Ece", "Burak", "Zeynep", "Ali", "Ayşe", "Fatma", "Mehmet", "Ahmet", "Selin", "Derya", "Oğuz", "Aslı", "Kerem", "Gökhan", "İrem", "Büşra", "Emre", "Sibel", "Tuna", "Lara", "Cem", "Gizem", "Onur", "Melis", "Bora", "İdil", "Efe", "Ada", "Kaan", "Nil", "Eren", "Derin", "Arda", "Pelin", "Tolga", "Sude", "Mete", "Umut", "Beren"]
+SURNAMES = ["Yılmaz", "Kaya", "Demir", "Çelik", "Şahin", "Öztürk", "Arslan", "Doğan", "Kılıç", "Aydın", "Özkan", "Aslan", "Bulut", "Yıldız", "Güneş", "Korkmaz", "Erdoğan", "Yavuz", "Tekin", "Aksoy", "Kocaman", "Sarı", "Kurt", "Özcan", "Ünal", "Güler", "Yalçın", "Gül", "Polat", "Keskin", "Turan", "Avcı"]
 
 GROUP_TEMPLATES = [
     {"name": "Eskişehir Ev", "content": "Kira, faturalar ve mutfak masrafları ortak."},
@@ -37,21 +37,33 @@ GROUP_TEMPLATES = [
     {"name": "Akşam Yemeği Kulübü", "content": "Her hafta farklı bir yerde yemek."},
     {"name": "Spor Salonu Partnerleri", "content": "Ortak hoca ve suplement giderleri."},
     {"name": "Kamp Meraklıları", "content": "Çadır, ekipman ve kamp yeri ücretleri."},
-    {"name": "Sinema Gecesi", "content": "Bilet ve mısır paraları."},
-    {"name": "Yemekhane Boykot Ekibi", "content": "Dışarıdan toplu yemek siparişleri."},
     {"name": "Yol Arkadaşları", "content": "Akaryakıt ve otoban geçiş ücretleri."},
     {"name": "Oyun Gecesi", "content": "Pizza ve atıştırmalık giderleri."},
-    {"name": "Kira ve Faturalar", "content": "Aylık sabit giderlerin paylaşımı."},
-    {"name": "Hediye Fonu", "content": "Ortak alınan hediyelerin ödemeleri."},
-    {"name": "Yılbaşı Partisi", "content": "Süsleme ve ikramlık giderleri."},
     {"name": "Kedi Maması Fonu", "content": "Sokak hayvanları için ortak mama alımı."},
+    {"name": "Kayak Tatili", "content": "Skipass ve ekipman kiralama."},
+    {"name": "Yatırım Kulübü", "content": "Ortak alınan kitaplar ve abonelikler."},
+    {"name": "Müzik Grubu", "content": "Stüdyo kirası ve tel masrafları."},
+    {"name": "Yoga Sınıfı", "content": "Hoca ücreti ve salon gideri."}
 ]
 
-EXPENSE_CONTENTS = [
-    "Market Alışverişi", "Elektrik Faturası", "Su Faturası", "İnternet", "Doğalgaz", 
-    "Pizza Siparişi", "Uber Ücreti", "Saha Kirası", "Kahve Alımı", "Kırtasiye Masrafı",
-    "Akşam Yemeği", "Sinema Bileti", "Kamp Malzemesi", "Benzin", "Otopark", "Kira",
-    "Temizlik Malzemesi", "Damacana Su", "Ekmek ve Gazete", "Tamir Masrafı"
+EXPENSE_DATA = [
+    {"content": "Market Alışverişi", "category": "Market Alışverişi", "min": 200, "max": 1500},
+    {"content": "Elektrik Faturası", "category": "Fatura", "min": 300, "max": 1200},
+    {"content": "Su Faturası", "category": "Fatura", "min": 100, "max": 400},
+    {"content": "İnternet", "category": "Fatura", "min": 150, "max": 450},
+    {"content": "Doğalgaz", "category": "Fatura", "min": 500, "max": 3000},
+    {"content": "Pizza Siparişi", "category": "Restoranlar ve Barlar", "min": 400, "max": 1200},
+    {"content": "Uber / Taksi", "category": "Transport", "min": 80, "max": 600},
+    {"content": "Saha Kirası", "category": "Eğlence", "min": 500, "max": 1000},
+    {"content": "Kahve / Starbucks", "category": "Restoranlar ve Barlar", "min": 150, "max": 400},
+    {"content": "Kırtasiye", "category": "Shopping", "min": 50, "max": 300},
+    {"content": "Akşam Yemeği", "category": "Restoranlar ve Barlar", "min": 800, "max": 4000},
+    {"content": "Sinema Bileti", "category": "Eğlence", "min": 200, "max": 600},
+    {"content": "Kira Ödemesi", "category": "Kira ve Masraflar", "min": 5000, "max": 25000},
+    {"content": "Damacana Su", "category": "İçme suyu", "min": 60, "max": 180},
+    {"content": "Halı Yıkama", "category": "Halı Yıkama", "min": 400, "max": 1500},
+    {"content": "Kasap / Et Alımı", "category": "Kasap", "min": 600, "max": 3500},
+    {"content": "Yufka / Kahvaltılık", "category": "Yufkacı", "min": 100, "max": 350}
 ]
 
 MESSAGES = [
@@ -62,9 +74,9 @@ MESSAGES = [
     "Harcamayı sisteme girdim, onay bekliyorum.", "Oğuz senin borcun hala duruyor haberin olsun.",
     "Selam, yeni üye kabul ediyor muyuz?", "Arkadaşlar bu akşam buluşuyor muyuz?",
     "Ben ödememi yaptım, kontrol eder misiniz?", "Fiyatlar çok artmış gerçekten.",
-    "Bu hafta kimse bir şey eklemedi mi?", "Market poşetlerini kapıya bıraktım.",
-    "Bir sonraki toplantı ne zaman?", "Bence bu ay tasarruf yapmalıyız.",
-    "Selam, ben yeni katıldım.", "Grup kuralları neler?", "Hayırlı olsun beyler."
+    "Bu hafta kimse bir şey eklemedi mi?", "Bir sonraki toplantı ne zaman?",
+    "Selam, ben yeni katıldım.", "Grup kuralları neler?", "Hayırlı olsun beyler.",
+    "Faturanın fotoğrafını çektim yüklüyorum.", "Borçları kapatalım artık beyler.", "Ekmek almayı unutmayın."
 ]
 
 REPORT_REASONS = [
@@ -72,35 +84,22 @@ REPORT_REASONS = [
     "Taciz edici mesajlar gönderiyor.", "Sahte makbuz yüklüyor.", "Sistem açığını kullanıyor.",
     "Dolandırıcılık şüphesi var.", "İnsanlara hakaret ediyor.", "Spam yapıyor."
 ]
-CATEGORIES = ["HAKARET", "DOLANDIRICILIK", "SPAM", "UYGUNSUZ_İÇERİK", "DİĞER"]
+REPORT_CATEGORIES = ["HAKARET", "DOLANDIRICILIK", "SPAM", "UYGUNSUZ_İÇERİK", "DİĞER"]
 
 async def reset_database():
-    """Veritabanındaki tüm tabloları siler ve yeniden oluşturur."""
-    logger.info("Veritabanı sıfırlanıyor (Drop & Create)...")
+    logger.info("Veritabanı sıfırlanıyor...")
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.drop_all)
         await conn.run_sync(Base.metadata.create_all)
-    logger.info("Tablolar başarıyla yeniden oluşturuldu.")
+    logger.info("Tablolar oluşturuldu.")
 
 async def seed_data():
-    """Gerçekçi verilerle sistemi doldurur."""
-    logger.info("Gerçekçi verilerle seeding işlemi başlatılıyor...")
-    
+    logger.info("Mega Seeding başlatıldı...")
     async with get_session() as session:
         default_pwd = hash_password("123")
         
         # 1. ADMIN
-        admin = User(
-            name="Admin",
-            surname="User",
-            mail="admin@admin.com",
-            password=default_pwd,
-            age=30,
-            birthday=date(1994, 1, 1),
-            phone_number="+905000000000",
-            role=GlobalRole.ADMIN,
-            is_active=True
-        )
+        admin = User(name="Admin", surname="Octoqus", mail="admin@admin.com", password=default_pwd, age=30, birthday=date(1994, 5, 15), phone_number="+905000000000", role=GlobalRole.ADMIN, is_active=True)
         session.add(admin)
         
         # 2. KULLANICILAR
@@ -108,166 +107,137 @@ async def seed_data():
         for i in range(1, NUM_USERS + 1):
             name = random.choice(NAMES)
             surname = random.choice(SURNAMES)
-            email = f"user{i}@example.com"
             user = User(
-                name=name,
-                surname=surname,
-                mail=email,
-                password=default_pwd,
-                age=random.randint(18, 50),
-                birthday=date(random.randint(1975, 2005), random.randint(1, 12), random.randint(1, 28)),
-                phone_number=f"+905{random.randint(100, 999)}{random.randint(1000000, 9999999)}",
-                role=GlobalRole.USER,
-                is_active=True
+                name=name, surname=surname, mail=f"user{i}@example.com", password=default_pwd,
+                age=random.randint(18, 55), birthday=date(random.randint(1970, 2005), random.randint(1, 12), random.randint(1, 28)),
+                phone_number=f"+905{random.randint(30, 59)}{random.randint(100, 999)}{random.randint(1000, 9999)}",
+                role=GlobalRole.USER, is_active=True
             )
             session.add(user)
             all_users.append(user)
-            
         await session.flush()
         logger.info(f"{NUM_USERS} kullanıcı oluşturuldu.")
 
-        # 3. GRUPLAR
+        # 3. GRUPLAR & ÜYELİKLER
         all_groups = []
-        group_memberships = [] # (group, member_list)
-        
         for i in range(1, NUM_GROUPS + 1):
             tpl = random.choice(GROUP_TEMPLATES)
-            g_name = f"{tpl['name']} #{i}"
-            is_approved = True if i % 5 != 0 else False # %20'si admin onayı beklesin
+            # %15 onay bekleyen grup isteği, %5 reddedilmiş, %80 onaylı
+            rand_val = random.random()
+            is_approved = True if rand_val > 0.20 else False
             
-            group = Group(
-                name=g_name,
-                content=tpl['content'],
-                is_approved=is_approved
-            )
+            group = Group(name=f"{tpl['name']} #{i}", content=tpl['content'], is_approved=is_approved)
             session.add(group)
-            all_groups.append(group)
             await session.flush()
+            all_groups.append(group)
             
-            # Gruba bir lider ata
+            # Lider ve Üyeler
             leader = random.choice(all_users)
-            leader_member = GroupMember(
-                user_id=leader.id, 
-                group_id=group.id, 
-                role=GroupMemberRole.GROUP_LEADER, 
-                is_approved=True
-            )
-            session.add(leader_member)
+            session.add(GroupMember(user_id=leader.id, group_id=group.id, role=GroupMemberRole.GROUP_LEADER, is_approved=True))
             
-            # Rastgele 4-12 üye ekle
-            members_count = random.randint(4, 12)
-            group_users = random.sample(all_users, members_count)
-            if leader not in group_users:
-                group_users.append(leader)
-            
-            actual_members = [leader]
-            for u in group_users:
+            # Gruba katılma istekleri ve onaylı üyeler
+            members_count = random.randint(5, 15)
+            potential_members = random.sample(all_users, members_count)
+            for u in potential_members:
                 if u.id == leader.id: continue
-                # Bazıları onay beklesin
-                approved = True if random.random() > 0.15 else False
-                member = GroupMember(
-                    user_id=u.id, 
-                    group_id=group.id, 
-                    role=GroupMemberRole.USER, 
-                    is_approved=approved
-                )
-                session.add(member)
-                if approved:
-                    actual_members.append(u)
-            
-            group_memberships.append((group, actual_members))
+                # %25'i katılma isteği (is_approved=False)
+                approved = True if random.random() > 0.25 else False
+                session.add(GroupMember(user_id=u.id, group_id=group.id, role=GroupMemberRole.USER, is_approved=approved))
         
-        logger.info(f"{NUM_GROUPS} grup ve üyelikleri oluşturuldu.")
         await session.flush()
+        logger.info(f"{NUM_GROUPS} grup ve ilişkili üyelikler/istekler oluşturuldu.")
 
         # 4. HARCAMALAR (EXPENSES)
-        for group, members in group_memberships:
+        for group in all_groups:
             if not group.is_approved: continue
             
-            for _ in range(random.randint(15, EXPENSES_PER_GROUP)):
+            # Grubun onaylı üyelerini bul
+            stmt = select(User).join(GroupMember).where(GroupMember.group_id == group.id, GroupMember.is_approved == True)
+            members = (await session.scalars(stmt)).all()
+            if not members: continue
+
+            for _ in range(random.randint(20, EXPENSES_PER_GROUP)):
                 payer = random.choice(members)
+                item = random.choice(EXPENSE_DATA)
+                days_ago = random.randint(0, 180) # Son 6 ay
                 expense = Expense(
-                    group_id=group.id,
-                    added_by=payer.id,
-                    amount=round(random.uniform(10, 2500), 2),
-                    content=random.choice(EXPENSE_CONTENTS),
-                    date=date.today() - timedelta(days=random.randint(0, 60)),
-                    created_at=datetime.now(timezone.utc) - timedelta(days=random.randint(0, 60), hours=random.randint(0, 23))
+                    group_id=group.id, added_by=payer.id,
+                    amount=round(random.uniform(item["min"], item["max"]), 2),
+                    content=item["content"], category=item["category"],
+                    date=date.today() - timedelta(days=days_ago),
+                    created_at=datetime.now(timezone.utc) - timedelta(days=days_ago, hours=random.randint(0, 23)),
+                    is_deleted=False
                 )
                 session.add(expense)
         
-        logger.info("Grup harcamaları oluşturuldu.")
         await session.flush()
+        logger.info("Mantıklı ve kategorize edilmiş harcamalar eklendi.")
 
         # 5. MESAJLAR (CHAT)
-        for group, members in group_memberships:
+        for group in all_groups:
             if not group.is_approved: continue
-            
-            for _ in range(random.randint(10, MESSAGES_PER_GROUP)):
+            stmt = select(User).join(GroupMember).where(GroupMember.group_id == group.id, GroupMember.is_approved == True)
+            members = (await session.scalars(stmt)).all()
+            if not members: continue
+
+            for _ in range(random.randint(15, MESSAGES_PER_GROUP)):
                 sender = random.choice(members)
                 msg = Message(
-                    group_id=group.id,
-                    sender_id=sender.id,
+                    group_id=group.id, sender_id=sender.id,
                     message_text=random.choice(MESSAGES),
                     timestamp=datetime.now(timezone.utc) - timedelta(days=random.randint(0, 30), minutes=random.randint(0, 1440))
                 )
                 session.add(msg)
         
-        logger.info("Grup mesajları (chat) oluşturuldu.")
         await session.flush()
+        logger.info("Grup içi mesajlaşmalar oluşturuldu.")
 
         # 6. ŞİKAYETLER (REPORTS)
-        # Mevcut mesajlardan bazılarını şikayet et
-        stmt_msgs = select(Message).limit(100)
-        messages_result = await session.scalars(stmt_msgs)
-        all_msgs = list(messages_result)
+        stmt_msgs = select(Message).limit(200)
+        all_msgs = (await session.scalars(stmt_msgs)).all()
 
         for _ in range(REPORTS_COUNT):
             reporter = random.choice(all_users)
             target_user = random.choice(all_users)
-            target_msg = random.choice(all_msgs) if (all_msgs and random.random() > 0.4) else None
+            target_msg = random.choice(all_msgs) if (all_msgs and random.random() > 0.5) else None
             
             report = Report(
                 reporter_id=reporter.id,
                 reported_user_id=target_user.id if not target_msg else None,
                 reported_message_id=target_msg.id if target_msg else None,
-                category=random.choice(CATEGORIES),
+                category=random.choice(REPORT_CATEGORIES),
                 aciklama=random.choice(REPORT_REASONS),
                 status=random.choice(list(ReportStatus)),
-                created_at=datetime.now(timezone.utc) - timedelta(days=random.randint(0, 15))
+                created_at=datetime.now(timezone.utc) - timedelta(days=random.randint(0, 20))
             )
             session.add(report)
         
-        logger.info("Sistem şikayetleri oluşturuldu.")
+        logger.info("Şikayetler ve raporlar eklendi.")
 
-        # 7. TAKİPÇİLER (SOCIAL)
+        # 7. SOSYAL AĞ
         for _ in range(FOLLOWS_COUNT):
             f1, f2 = random.sample(all_users, 2)
             stmt = insert(follower_table).values(
-                follower_id=f1.id,
-                following_id=f2.id,
-                created_at=datetime.now(timezone.utc) - timedelta(days=random.randint(0, 60))
+                follower_id=f1.id, following_id=f2.id,
+                created_at=datetime.now(timezone.utc) - timedelta(days=random.randint(0, 90))
             )
-            try:
-                await session.execute(stmt)
-            except: 
-                pass
-
-        logger.info("Sosyal ağ bağlantıları oluşturuldu.")
+            try: await session.execute(stmt)
+            except: pass
+        
+        logger.info("Sosyal ağ (takipçiler) oluşturuldu.")
 
         await session.commit()
-        logger.info("TÜM VERİLER BAŞARIYLA KAYDEDİLDİ!")
+        logger.info("=== SEEDING TAMAMLANDI ===")
         logger.info("Admin: admin@admin.com / 123")
-        logger.info("Test User: user16@example.com / 123")
+        logger.info(f"Toplam Veri: {NUM_USERS} Kullanıcı, {NUM_GROUPS} Grup, Binlerce Harcama/Mesaj.")
 
 async def main():
     try:
         await reset_database()
         await seed_data()
     except Exception as e:
-        logger.error(f"Beklenmeyen bir hata oluştu: {str(e)}")
-        import traceback
-        traceback.print_exc()
+        logger.error(f"Seeding hatası: {str(e)}")
+        import traceback; traceback.print_exc()
     finally:
         await dispose_engine()
 
