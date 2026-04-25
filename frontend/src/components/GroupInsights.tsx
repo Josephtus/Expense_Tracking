@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { motion } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 import { apiFetch } from '../utils/api';
 
 interface Expense {
@@ -41,6 +41,7 @@ export const GroupInsights: React.FC<GroupInsightsProps> = ({ groupId, currentUs
   const [viewScope, setViewScope] = useState<ViewScope>('Grup İçin');
   const [currentDate, setCurrentDate] = useState(new Date());
   const [customCats, setCustomCats] = useState<Category[]>([]);
+  const [activeIndex, setActiveIndex] = useState<number | null>(null);
 
   const fetchAll = async () => {
     try {
@@ -113,7 +114,19 @@ export const GroupInsights: React.FC<GroupInsightsProps> = ({ groupId, currentUs
     };
   }, [filteredExpenses, customCats]);
 
-  const monthName = currentDate.toLocaleString('tr-TR', { month: 'long', year: 'numeric' });
+  const monthName = filterType === 'Ay' 
+    ? currentDate.toLocaleString('tr-TR', { month: 'long', year: 'numeric' })
+    : currentDate.getFullYear().toString();
+
+  const handleNav = (dir: number) => {
+    const d = new Date(currentDate);
+    if (filterType === 'Ay') {
+      d.setMonth(d.getMonth() + dir);
+    } else if (filterType === 'Yıl') {
+      d.setFullYear(d.getFullYear() + dir);
+    }
+    setCurrentDate(d);
+  };
 
   if (loading) {
     return (
@@ -147,35 +160,89 @@ export const GroupInsights: React.FC<GroupInsightsProps> = ({ groupId, currentUs
 
             {filterType !== 'Tümü' && (
               <div className="flex items-center justify-between py-6 border-y border-white/5">
-                <button onClick={() => setCurrentDate(new Date(currentDate.setMonth(currentDate.getMonth() - 1)))} className="w-10 h-10 rounded-full bg-white/5 flex items-center justify-center hover:bg-[#00f0ff] hover:text-black transition-all">
+                <button onClick={() => handleNav(-1)} className="w-10 h-10 rounded-full bg-white/5 flex items-center justify-center hover:bg-[#00f0ff] hover:text-black transition-all">
                   <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M15 19l-7-7 7-7" /></svg>
                 </button>
                 <span className="text-lg font-black text-white uppercase tracking-widest">{monthName}</span>
-                <button onClick={() => setCurrentDate(new Date(currentDate.setMonth(currentDate.getMonth() + 1)))} className="w-10 h-10 rounded-full bg-white/5 flex items-center justify-center hover:bg-[#00f0ff] hover:text-black transition-all">
+                <button onClick={() => handleNav(1)} className="w-10 h-10 rounded-full bg-white/5 flex items-center justify-center hover:bg-[#00f0ff] hover:text-black transition-all">
                   <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M9 5l7 7-7 7" /></svg>
                 </button>
               </div>
             )}
 
-            <div className="flex items-center gap-10 bg-white/5 p-8 rounded-[32px] border border-white/5">
-              <div className="relative w-32 h-32 flex-shrink-0">
+            <div className="flex flex-col sm:flex-row items-center gap-10 bg-white/5 p-8 rounded-[32px] border border-white/5">
+              <div className="relative w-48 h-48 flex-shrink-0">
                 {stats.total > 0 ? (
                   <svg className="w-full h-full rotate-[-90deg]" viewBox="0 0 32 32">
                     {stats.categories.map((c, i) => {
                       const percentage = (c.total / stats.total) * 100;
                       let offset = 0;
                       for(let j=0; j<i; j++) offset += (stats.categories[j].total / stats.total) * 100;
-                      return <circle key={i} r="16" cx="16" cy="16" fill="transparent" stroke={c.color} strokeWidth="32" strokeDasharray={`${percentage} 100`} strokeDashoffset={-offset} />;
+                      return (
+                        <motion.circle 
+                          key={i} 
+                          r="16" cx="16" cy="16" 
+                          fill="transparent" 
+                          stroke={c.color} 
+                          strokeWidth="32" 
+                          strokeDasharray={`${percentage} 100`} 
+                          strokeDashoffset={-offset}
+                          initial={{ strokeDasharray: "0 100" }}
+                          animate={{ strokeDasharray: `${percentage} 100` }}
+                          transition={{ duration: 1, delay: i * 0.1, ease: "easeOut" }}
+                          onMouseEnter={() => setActiveIndex(i)}
+                          onMouseLeave={() => setActiveIndex(null)}
+                          className="cursor-pointer hover:opacity-80 transition-opacity"
+                        />
+                      );
                     })}
                   </svg>
                 ) : (
                   <div className="w-full h-full rounded-full border-4 border-white/5 flex items-center justify-center text-[10px] text-slate-500 font-bold uppercase">Veri Yok</div>
                 )}
-                <div className="absolute inset-0 bg-[#0f172a] rounded-full scale-[0.6]"></div>
+                <div className="absolute inset-0 bg-[#0f172a] rounded-full scale-[0.6] flex flex-col items-center justify-center text-center p-4 transition-all">
+                  <AnimatePresence mode="wait">
+                    {activeIndex !== null ? (
+                      <motion.div
+                        key="active"
+                        initial={{ opacity: 0, scale: 0.8 }}
+                        animate={{ opacity: 1, scale: 1 }}
+                        exit={{ opacity: 0, scale: 0.8 }}
+                        className="w-full"
+                      >
+                        <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest">{stats.categories[activeIndex].label}</p>
+                        <p className="text-sm font-black text-[#00f0ff] truncate">₺{stats.categories[activeIndex].total.toLocaleString('tr-TR')}</p>
+                      </motion.div>
+                    ) : (
+                      <motion.div
+                        key="total"
+                        initial={{ opacity: 0, scale: 0.8 }}
+                        animate={{ opacity: 1, scale: 1 }}
+                        exit={{ opacity: 0, scale: 0.8 }}
+                        className="w-full"
+                      >
+                        <p className="text-[8px] font-black text-slate-500 uppercase tracking-widest">TOPLAM</p>
+                        <p className="text-sm font-black text-white truncate">₺{stats.total > 1000 ? (stats.total/1000).toFixed(1)+'K' : stats.total.toFixed(0)}</p>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+                </div>
               </div>
-              <div>
-                <p className="text-[10px] font-black text-[#00f0ff] uppercase tracking-[0.2em] mb-1">Toplam</p>
-                <p className="text-4xl font-black text-white tracking-tighter">₺{stats.total.toLocaleString('tr-TR', { minimumFractionDigits: 2 })}</p>
+
+              <div className="flex-1 space-y-3 w-full">
+                {stats.categories.slice(0, 4).map((c, i) => (
+                  <div key={i} className="flex items-center justify-between group">
+                    <div className="flex items-center gap-2">
+                      <div className="w-2 h-2 rounded-full" style={{ backgroundColor: c.color }} />
+                      <span className="text-xl">{c.icon}</span>
+                      <span className="text-[11px] font-black text-slate-400 uppercase tracking-wider group-hover:text-white transition-colors">{c.label}</span>
+                    </div>
+                    <span className="text-xs font-black text-white">₺{c.total.toLocaleString('tr-TR')}</span>
+                  </div>
+                ))}
+                {stats.categories.length > 4 && (
+                  <p className="text-[9px] font-bold text-slate-500 uppercase tracking-widest text-center pt-2">+ {stats.categories.length - 4} Kategori Daha</p>
+                )}
               </div>
             </div>
 
@@ -189,22 +256,47 @@ export const GroupInsights: React.FC<GroupInsightsProps> = ({ groupId, currentUs
           </div>
 
           <div className="lg:w-1/2 space-y-4">
-            <h4 className="text-xs font-black text-slate-500 uppercase tracking-[0.3em] mb-6">Kategori Detayları</h4>
+            <div className="flex items-center justify-between mb-4">
+              <h4 className="text-xs font-black text-slate-500 uppercase tracking-[0.3em]">Kategori Detayları</h4>
+              <span className="text-[10px] font-black text-[#00f0ff] bg-[#00f0ff]/10 px-3 py-1 rounded-full uppercase">{stats.categories.length} Kategori</span>
+            </div>
             <div className="space-y-3 max-h-[500px] overflow-y-auto pr-2 custom-scrollbar">
               {stats.categories.map((c, i) => (
-                <div key={i} className="group bg-white/5 p-5 rounded-[24px] border border-transparent hover:border-[#00f0ff]/30 transition-all flex items-center justify-between">
+                <motion.div 
+                  key={i} 
+                  initial={{ opacity: 0, x: 20 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  transition={{ delay: i * 0.05 }}
+                  className="group bg-white/5 p-5 rounded-[24px] border border-transparent hover:border-[#00f0ff]/30 transition-all flex items-center justify-between"
+                >
                   <div className="flex items-center gap-4">
-                    <div className="w-12 h-12 rounded-2xl bg-slate-800 flex items-center justify-center text-xl group-hover:scale-110 transition-transform">
+                    <div className="w-12 h-12 rounded-2xl bg-slate-800 flex items-center justify-center text-xl group-hover:scale-110 transition-transform relative">
+                      <div className="absolute -top-1 -left-1 w-3 h-3 rounded-full border-2 border-slate-900" style={{ backgroundColor: c.color }} />
                       {c.icon}
                     </div>
                     <div>
                       <p className="text-white font-black tracking-tight">{c.label}</p>
-                      <p className="text-[10px] text-slate-500 font-black uppercase tracking-widest mt-0.5">{((c.total / stats.total) * 100).toFixed(1)}%</p>
+                      <div className="flex items-center gap-2 mt-0.5">
+                         <p className="text-[10px] text-slate-500 font-black uppercase tracking-widest">{((c.total / stats.total) * 100).toFixed(1)}%</p>
+                         <div className="w-16 h-1 bg-white/5 rounded-full overflow-hidden">
+                            <motion.div 
+                              initial={{ width: 0 }}
+                              animate={{ width: `${(c.total / stats.total) * 100}%` }}
+                              className="h-full" 
+                              style={{ backgroundColor: c.color }}
+                            />
+                         </div>
+                      </div>
                     </div>
                   </div>
                   <p className="text-lg font-black text-white tracking-tighter">₺{c.total.toLocaleString('tr-TR', { minimumFractionDigits: 2 })}</p>
-                </div>
+                </motion.div>
               ))}
+              {stats.categories.length === 0 && (
+                <div className="py-20 text-center">
+                  <p className="text-slate-600 font-black uppercase text-xs tracking-widest">Bu dönemde harcama bulunamadı.</p>
+                </div>
+              )}
             </div>
           </div>
         </div>
