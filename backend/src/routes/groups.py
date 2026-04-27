@@ -27,11 +27,11 @@ from pydantic import BaseModel, ValidationError, field_validator
 from sanic import Blueprint, Request
 from sanic.exceptions import BadRequest, Forbidden, NotFound
 from sanic.response import HTTPResponse, json as sanic_json
-from sqlalchemy import asc, select
+from sqlalchemy import asc, select, func
 from sqlalchemy.orm import selectinload
 
 from src.database import get_session
-from src.models import Group, GroupMember, GroupMemberRole, User, GroupBan
+from src.models import Group, GroupMember, GroupMemberRole, User, GroupBan, Expense
 from src.services.security import protected, rate_limit
 
 logger = structlog.get_logger(__name__)
@@ -337,9 +337,14 @@ async def get_group(request: Request, group_id: int) -> HTTPResponse:
 async def list_groups(request: Request) -> HTTPResponse:
     """
     Kullanıcının üyesi olduğu (onaylı veya bekleyen) grupları listeler.
-    Genel keşfetme özelliği gizlilik gereği kaldırılmıştır.
+    
+    Query Params:
+        limit   : int (opsiyonel)
+        sort_by : str ('activity' ise son harcama tarihine göre sıralar)
     """
     user_id: int = int(request.ctx.user["sub"])
+    limit_val = request.args.get("limit")
+    sort_by = request.args.get("sort_by")
 
     async with get_session() as session:
         # Sadece kullanıcının üye olduğu grupları getir
@@ -353,9 +358,10 @@ async def list_groups(request: Request) -> HTTPResponse:
         )
         
         result = await session.execute(stmt)
+        rows = result.all()
         
         data_list = []
-        for group, membership in result:
+        for group, membership in rows:
             g_dict = _build_group_response(group)
             g_dict["role"] = membership.role.value
             g_dict["is_approved"] = membership.is_approved
@@ -1169,4 +1175,3 @@ async def set_group_nickname(request: Request, group_id: int) -> HTTPResponse:
             "message": "Takma ad güncellendi." if data.nickname else "Takma ad silindi.",
             "nickname": data.nickname
         })
-

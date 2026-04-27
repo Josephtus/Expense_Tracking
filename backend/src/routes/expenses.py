@@ -9,6 +9,7 @@ Endpoints:
   GET    /api/expenses/<group_id>                → Aktif harcamaları listele
   DELETE /api/expenses/<group_id>/<expense_id>   → Soft delete (yalnızca ekleyen)
   GET    /api/expenses/<group_id>/debts          → Borç optimizasyonu
+  GET    /api/expenses/summary/me                → Kullanıcının genel harcama özeti
 """
 
 from datetime import date, datetime, timezone
@@ -349,6 +350,44 @@ async def list_expenses(request: Request, group_id: int) -> HTTPResponse:
             "count":        len(expenses),
             "expenses":     [_build_expense(e) for e in expenses],
         }, status=200)
+
+
+@expenses_bp.get("/summary/me")
+@protected
+@openapi.summary("Kullanıcının harcama özeti")
+@openapi.description("Kullanıcının tüm gruplardaki harcamalarını kategori bazlı özetler.")
+async def get_my_spending_summary(request: Request) -> HTTPResponse:
+    user_id = int(request.ctx.user["sub"])
+    
+    async with get_session() as session:
+        # Silinmemiş ve hesaplaşma olmayan harcamaları kategori bazlı topla
+        stmt = (
+            select(Expense.category, func.sum(Expense.amount).label("total"))
+            .where(
+                Expense.added_by == user_id,
+                Expense.is_deleted.is_(False),
+                Expense.is_settlement.is_(False)
+            )
+            .group_by(Expense.category)
+        )
+        result = await session.execute(stmt)
+        rows = result.all()
+        
+        summary_data = []
+        total_spending = 0.0
+        
+        for row in rows:
+            cat_total = float(row.total or 0)
+            summary_data.append({
+                "category": row.category or "Diğer",
+                "total": cat_total
+            })
+            total_spending += cat_total
+            
+        return sanic_json({
+            "total_spending": total_spending,
+            "summary": sorted(summary_data, key=lambda x: x["total"], reverse=True)
+        })
 
 
 @expenses_bp.get("/<group_id:int>/export")
