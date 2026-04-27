@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { apiFetch } from '../utils/api';
-import { Search, Users, ArrowRight, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Users, ArrowRight, Plus } from 'lucide-react';
 import { useGroupStore } from '../store/groupStore';
 
 interface GroupListProps {
@@ -9,22 +9,18 @@ interface GroupListProps {
 }
 
 export const GroupList: React.FC<GroupListProps> = ({ onSelectGroup }) => {
-  const { refreshTrigger } = useGroupStore();
+  const { refreshTrigger, triggerRefresh } = useGroupStore();
   const [groups, setGroups] = useState<any[]>([]);
-  const [search, setSearch] = useState('');
   const [loading, setLoading] = useState(true);
-  
-  const [page, setPage] = useState(1);
-  const [totalCount, setTotalCount] = useState(0);
-  const limit = 6;
+  const [inviteCode, setInviteCode] = useState('');
+  const [joinLoading, setJoinLoading] = useState(false);
 
   const fetchGroups = async () => {
     setLoading(true);
     try {
-      const response = await apiFetch(`/groups?q=${encodeURIComponent(search)}&page=${page}&limit=${limit}`);
+      const response = await apiFetch('/groups');
       const data = await response.json();
       setGroups(data.groups || []);
-      setTotalCount(data.total_count || 0);
     } catch (error) {
       console.error('Gruplar alınırken hata:', error);
     } finally {
@@ -34,40 +30,75 @@ export const GroupList: React.FC<GroupListProps> = ({ onSelectGroup }) => {
 
   useEffect(() => {
     fetchGroups();
-  }, [search, refreshTrigger, page]);
+  }, [refreshTrigger]);
 
-  useEffect(() => {
-    setPage(1);
-  }, [search]);
+  const handleJoinByCode = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!inviteCode.trim()) return;
 
-  const totalPages = Math.ceil(totalCount / limit);
+    setJoinLoading(true);
+    try {
+      const response = await apiFetch('/groups/join', {
+        method: 'POST',
+        body: JSON.stringify({ invite_code: inviteCode.trim() })
+      });
+      const data = await response.json();
+
+      if (response.ok) {
+        alert(data.message);
+        setInviteCode('');
+        triggerRefresh();
+      } else {
+        alert(data.message || "Katılma isteği gönderilemedi.");
+      }
+    } catch (error) {
+      alert("Bir hata oluştu.");
+    } finally {
+      setJoinLoading(false);
+    }
+  };
 
   return (
     <div className="space-y-8 max-w-7xl mx-auto">
-      <div className="bg-slate-900/40 backdrop-blur-3xl border border-white/5 p-6 rounded-[32px] shadow-2xl flex flex-col md:flex-row md:items-center justify-between gap-6 relative overflow-hidden">
-        <div className="absolute top-0 right-0 w-32 h-32 bg-[#00f0ff]/5 blur-2xl rounded-full pointer-events-none" />
+      {/* Header & Join Section */}
+      <div className="bg-slate-900/40 backdrop-blur-3xl border border-white/5 p-8 rounded-[32px] shadow-2xl flex flex-col lg:flex-row lg:items-center justify-between gap-8 relative overflow-hidden">
+        <div className="absolute top-0 right-0 w-64 h-64 bg-[#00f0ff]/5 blur-3xl rounded-full pointer-events-none" />
+        
         <div className="relative z-10">
-          <h2 className="text-xl font-black text-white tracking-tight">Topluluk Keşfet</h2>
-          <p className="text-slate-500 text-[10px] font-bold uppercase tracking-widest mt-1">{totalCount} Aktif Grup Bulundu</p>
+          <h2 className="text-3xl font-black text-white tracking-tight">Gruplarım</h2>
+          <p className="text-slate-500 text-xs font-bold uppercase tracking-widest mt-1">
+            {groups.length} Aktif Bağlantı
+          </p>
         </div>
-        <div className="relative w-full max-w-md group z-10">
-          <div className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500 group-focus-within:text-[#00f0ff] transition-colors">
-            <Search size={16} />
+
+        <form onSubmit={handleJoinByCode} className="relative w-full max-w-lg flex gap-3 z-10">
+          <div className="relative flex-1 group">
+            <input 
+              type="text" 
+              placeholder="#DAVET-KODU"
+              className="w-full pl-6 pr-4 py-4 rounded-2xl bg-slate-950/50 border border-white/10 text-white placeholder:text-slate-600 focus:outline-none focus:border-[#00f0ff]/50 focus:ring-1 focus:ring-[#00f0ff]/20 transition-all font-mono tracking-widest text-sm"
+              value={inviteCode}
+              onChange={(e) => setInviteCode(e.target.value)}
+            />
           </div>
-          <input 
-            type="text" 
-            placeholder="Grup ara..."
-            className="w-full pl-12 pr-4 py-3 rounded-2xl bg-slate-950/50 border border-white/5 text-white placeholder:text-slate-600 focus:outline-none focus:border-[#00f0ff]/50 transition-all text-sm"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-          />
-        </div>
+          <button 
+            type="submit"
+            disabled={joinLoading || !inviteCode.trim()}
+            className="px-8 py-4 bg-white text-black rounded-2xl font-black text-xs uppercase tracking-widest hover:bg-[#00f0ff] transition-all active:scale-95 disabled:opacity-50 disabled:grayscale shadow-xl flex items-center gap-2 whitespace-nowrap"
+          >
+            {joinLoading ? 'GÖNDERİLİYOR...' : (
+              <>
+                <Plus size={16} /> GRUBA KATIL
+              </>
+            )}
+          </button>
+        </form>
       </div>
 
       {loading ? (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {[1, 2, 3, 4, 5, 6].map((n) => (
-            <div key={n} className="h-48 bg-slate-900/40 rounded-3xl border border-white/5 animate-pulse" />
+          {[1, 2, 3].map((n) => (
+            <div key={n} className="h-56 bg-slate-900/40 rounded-[32px] border border-white/5 animate-pulse" />
           ))}
         </div>
       ) : (
@@ -76,41 +107,42 @@ export const GroupList: React.FC<GroupListProps> = ({ onSelectGroup }) => {
             {groups.map((group, index) => (
               <motion.div
                 key={group.id}
-                initial={{ opacity: 0, scale: 0.95 }}
-                animate={{ opacity: 1, scale: 1 }}
+                initial={{ opacity: 0, scale: 0.95, y: 20 }}
+                animate={{ opacity: 1, scale: 1, y: 0 }}
                 exit={{ opacity: 0, scale: 0.95 }}
-                transition={{ duration: 0.2, delay: index * 0.03 }}
-                whileHover={{ y: -5, borderColor: 'rgba(0, 240, 255, 0.3)' }}
+                transition={{ duration: 0.3, delay: index * 0.05 }}
+                whileHover={{ y: -8, borderColor: 'rgba(0, 240, 255, 0.3)' }}
                 onClick={() => onSelectGroup(group.id, group.name, group.role || 'GUEST', group.is_approved)}
-                className="group bg-slate-900/40 backdrop-blur-md border border-white/5 p-6 rounded-[28px] transition-all cursor-pointer shadow-lg flex flex-col justify-between min-h-[180px]"
+                className="group bg-slate-900/40 backdrop-blur-md border border-white/5 p-8 rounded-[32px] transition-all cursor-pointer shadow-xl flex flex-col justify-between min-h-[220px] relative overflow-hidden"
               >
-                <div>
-                  <div className="flex justify-between items-start mb-4">
-                    <div className="w-10 h-10 rounded-xl bg-white/5 border border-white/10 flex items-center justify-center text-lg">
+                <div className="absolute top-0 right-0 w-32 h-32 bg-white/5 blur-3xl -mr-16 -mt-16 group-hover:bg-[#00f0ff]/10 transition-colors" />
+                
+                <div className="relative z-10">
+                  <div className="flex justify-between items-start mb-6">
+                    <div className="w-12 h-12 rounded-2xl bg-white/5 border border-white/10 flex items-center justify-center text-2xl shadow-inner">
                       🏢
                     </div>
-                    <div className="flex flex-col items-end gap-1">
-                      <div className={`px-2 py-0.5 rounded-md text-[8px] font-black uppercase tracking-widest ${
-                        group.role?.toUpperCase() === 'GROUP_LEADER' 
-                          ? 'bg-amber-500/10 text-amber-500 border border-amber-500/20' 
-                          : group.role?.toUpperCase() === 'USER'
-                          ? 'bg-[#00f0ff]/10 text-[#00f0ff] border border-[#00f0ff]/20'
-                          : 'bg-white/5 text-slate-500'
-                      }`}>
-                        {group.role?.toUpperCase() === 'GROUP_LEADER' ? 'Lider' : group.role?.toUpperCase() === 'USER' ? 'Üye' : 'Misafir'}
-                      </div>
+                    <div className={`px-3 py-1 rounded-lg text-[10px] font-black uppercase tracking-widest ${
+                      group.role?.toUpperCase() === 'GROUP_LEADER' 
+                        ? 'bg-amber-500/10 text-amber-500 border border-amber-500/20' 
+                        : 'bg-[#00f0ff]/10 text-[#00f0ff] border border-[#00f0ff]/20'
+                    }`}>
+                      {group.role?.toUpperCase() === 'GROUP_LEADER' ? 'Lider' : 'Üye'}
                     </div>
                   </div>
-                  <h3 className="text-lg font-black text-white group-hover:text-[#00f0ff] transition-colors tracking-tight line-clamp-1">{group.name}</h3>
-                  <p className="text-slate-500 text-xs line-clamp-1 mt-1">{group.content || 'Açıklama yok.'}</p>
+                  <h3 className="text-xl font-black text-white group-hover:text-[#00f0ff] transition-colors tracking-tight line-clamp-1 mb-2">{group.name}</h3>
+                  <p className="text-slate-500 text-xs line-clamp-2 leading-relaxed">{group.content || 'Açıklama belirtilmemiş.'}</p>
                 </div>
 
-                <div className="mt-6 pt-4 border-t border-white/5 flex items-center justify-between">
-                  <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest flex items-center gap-2 group-hover:text-white transition-colors">
-                    <Users size={12} /> İncele
-                  </span>
-                  <div className="w-8 h-8 rounded-full bg-white/5 flex items-center justify-center group-hover:bg-[#00f0ff] group-hover:text-slate-950 transition-all">
-                    <ArrowRight size={14} />
+                <div className="mt-8 pt-6 border-t border-white/5 flex items-center justify-between relative z-10">
+                  <div className="flex flex-col">
+                    <span className="text-[9px] font-black text-slate-600 uppercase tracking-[0.2em] mb-1">Grup Durumu</span>
+                    <span className={`text-[10px] font-black uppercase ${group.is_approved ? 'text-emerald-500' : 'text-orange-500 animate-pulse'}`}>
+                      {group.is_approved ? 'AKTİF' : 'ONAY BEKLİYOR'}
+                    </span>
+                  </div>
+                  <div className="w-10 h-10 rounded-full bg-white/5 flex items-center justify-center group-hover:bg-[#00f0ff] group-hover:text-slate-950 group-hover:scale-110 transition-all shadow-lg">
+                    <ArrowRight size={18} />
                   </div>
                 </div>
               </motion.div>
@@ -118,52 +150,16 @@ export const GroupList: React.FC<GroupListProps> = ({ onSelectGroup }) => {
           </AnimatePresence>
 
           {groups.length === 0 && (
-            <div className="col-span-full py-16 text-center bg-slate-900/20 border border-dashed border-white/5 rounded-[32px]">
-              <Search size={24} className="text-slate-700 mx-auto mb-4" />
-              <p className="text-slate-500 font-bold text-sm">Grup bulunamadı.</p>
+            <div className="col-span-full py-24 text-center bg-slate-900/20 border-2 border-dashed border-white/5 rounded-[40px] flex flex-col items-center">
+              <div className="w-20 h-20 bg-white/5 rounded-3xl flex items-center justify-center mb-6">
+                <Users size={32} className="text-slate-600" />
+              </div>
+              <h3 className="text-xl font-black text-white mb-2">Henüz Bir Grubun Yok</h3>
+              <p className="text-slate-500 text-sm max-w-xs mx-auto">
+                Yeni bir grup oluşturabilir veya sana iletilen davet kodunu kullanarak bir gruba katılabilirsin.
+              </p>
             </div>
           )}
-        </div>
-      )}
-
-      {totalPages > 1 && (
-        <div className="flex items-center justify-center gap-4 pt-4">
-          <button 
-            disabled={page === 1}
-            onClick={() => setPage(p => p - 1)}
-            className="w-10 h-10 rounded-xl bg-white/5 border border-white/10 flex items-center justify-center text-white disabled:opacity-20 hover:bg-white/10 transition-all"
-          >
-            <ChevronLeft size={20} />
-          </button>
-          
-          <div className="flex items-center gap-2">
-            {[...Array(totalPages)].map((_, i) => {
-              const pNum = i + 1;
-              if (totalPages > 5 && Math.abs(pNum - page) > 2) return null;
-              
-              return (
-                <button
-                  key={pNum}
-                  onClick={() => setPage(pNum)}
-                  className={`w-10 h-10 rounded-xl font-black text-xs transition-all ${
-                    page === pNum 
-                      ? 'bg-[#00f0ff] text-slate-950 shadow-[0_0_15px_rgba(0,240,255,0.4)]' 
-                      : 'bg-white/5 text-slate-500 hover:text-white'
-                  }`}
-                >
-                  {pNum}
-                </button>
-              );
-            })}
-          </div>
-
-          <button 
-            disabled={page === totalPages}
-            onClick={() => setPage(p => p + 1)}
-            className="w-10 h-10 rounded-xl bg-white/5 border border-white/10 flex items-center justify-center text-white disabled:opacity-20 hover:bg-white/10 transition-all"
-          >
-            <ChevronRight size={20} />
-          </button>
         </div>
       )}
     </div>

@@ -126,7 +126,6 @@ export const Home: React.FC<HomeProps> = ({ onSelectGroup }) => {
             <h3 className="text-2xl font-black text-white tracking-tight">Üyesi Olduğun Gruplar</h3>
             <p className="text-slate-500 text-xs font-bold uppercase tracking-widest mt-1">Son Etkinliklere Göre</p>
           </div>
-          <button className="text-[10px] font-black text-[#00f0ff] uppercase tracking-widest hover:underline">Tümünü Gör</button>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -173,7 +172,6 @@ export const Home: React.FC<HomeProps> = ({ onSelectGroup }) => {
                 <LayoutGrid size={24} className="text-slate-600" />
               </div>
               <p className="text-slate-400 font-bold text-sm">Henüz bir gruba üye değilsiniz.</p>
-              <button className="mt-4 text-[#00f0ff] text-xs font-black uppercase tracking-widest hover:underline">Grup Keşfet</button>
             </div>
           )}
         </div>

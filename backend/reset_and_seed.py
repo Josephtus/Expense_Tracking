@@ -1,5 +1,7 @@
 import asyncio
 import random
+import secrets
+import string
 import structlog
 from datetime import date, datetime, timedelta, timezone
 from sqlalchemy import insert, select
@@ -14,6 +16,10 @@ from src.models import (
 from src.services.security import hash_password
 
 logger = structlog.get_logger(__name__)
+
+def gen_invite_code(length=12):
+    chars = string.ascii_uppercase + string.digits
+    return "#" + "".join(secrets.choice(chars) for _ in range(length))
 
 # MEGA SEEDER AYARLARI
 NUM_USERS = 350
@@ -127,7 +133,12 @@ async def seed_data():
             rand_val = random.random()
             is_approved = True if rand_val > 0.20 else False
             
-            group = Group(name=f"{tpl['name']} #{i}", content=tpl['content'], is_approved=is_approved)
+            group = Group(
+                name=f"{tpl['name']} #{i}", 
+                content=tpl['content'], 
+                is_approved=is_approved,
+                invite_code=gen_invite_code()
+            )
             session.add(group)
             await session.flush()
             all_groups.append(group)

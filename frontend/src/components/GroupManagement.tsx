@@ -22,6 +22,7 @@ interface BannedUser {
 interface GroupInfo {
   name: string;
   content: string;
+  invite_code: string;
 }
 
 export const GroupManagement: React.FC = () => {
@@ -31,7 +32,7 @@ export const GroupManagement: React.FC = () => {
   const [members, setMembers] = useState<Member[]>([]);
   const [bannedUsers, setBannedUsers] = useState<BannedUser[]>([]);
   const [loading, setLoading] = useState(true);
-  const [groupInfo, setGroupInfo] = useState<GroupInfo>({ name: '', content: '' });
+  const [groupInfo, setGroupInfo] = useState<GroupInfo>({ name: '', content: '', invite_code: '' });
   const [updateLoading, setUpdateLoading] = useState(false);
 
   const fetchMembers = async () => {
@@ -50,7 +51,11 @@ export const GroupManagement: React.FC = () => {
     try {
       const res = await apiFetch(`/groups/${groupId}`);
       const data = await res.json();
-      setGroupInfo({ name: data.name, content: data.content || '' });
+      setGroupInfo({ 
+        name: data.group.name, 
+        content: data.group.content || '', 
+        invite_code: data.group.invite_code 
+      });
     } catch (err) {
       console.error("Grup bilgileri yüklenemedi", err);
     }
@@ -141,6 +146,24 @@ export const GroupManagement: React.FC = () => {
     }
   };
 
+  const handleRegenerateCode = async () => {
+    if (!groupId) return;
+    if (!window.confirm("Davet kodunu yenilemek istediğinize emin misiniz? Eski kod artık çalışmayacaktır.")) return;
+    
+    try {
+      const res = await apiFetch(`/groups/${groupId}/regenerate-code`, { method: 'POST' });
+      const data = await res.json();
+      if (res.ok) {
+        setGroupInfo({ ...groupInfo, invite_code: data.invite_code });
+        alert("Davet kodu yenilendi!");
+      } else {
+        alert(data.message || "İşlem başarısız.");
+      }
+    } catch (err) {
+      alert("Bir hata oluştu.");
+    }
+  };
+
   const handleUpdateGroup = async (e: React.FormEvent) => {
     if (!groupId) return;
     e.preventDefault();
@@ -168,6 +191,29 @@ export const GroupManagement: React.FC = () => {
 
   return (
     <div className="max-w-5xl mx-auto space-y-10 pb-20 animate-fade-in">
+      <section className="bg-slate-900 p-8 rounded-3xl border border-slate-800 shadow-xl relative overflow-hidden">
+        <div className="absolute top-0 right-0 w-32 h-32 bg-[#00f0ff]/5 blur-2xl rounded-full pointer-events-none" />
+        <h3 className="text-xl font-bold text-slate-100 mb-6 flex items-center gap-2">
+          <span className="w-2 h-8 bg-[#00f0ff] rounded-full"></span>
+          Grup Davet Kodu
+        </h3>
+        <div className="flex flex-col sm:flex-row items-center gap-4 bg-slate-950 p-6 rounded-2xl border border-slate-800">
+          <div className="flex-1">
+            <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">Aktif Davet Kodu</p>
+            <p className="text-2xl font-mono font-black text-[#00f0ff] tracking-widest">{groupInfo.invite_code}</p>
+          </div>
+          <button 
+            onClick={handleRegenerateCode}
+            className="w-full sm:w-auto px-6 py-3 bg-white/5 border border-white/10 text-white rounded-xl text-xs font-black uppercase tracking-widest hover:bg-white/10 transition-all active:scale-95"
+          >
+            YENİ KOD ÜRET
+          </button>
+        </div>
+        <p className="text-[10px] text-slate-500 mt-4 italic">
+          * Bu kodu gruptan birileriyle paylaşarak katılmalarını sağlayabilirsiniz. Yeni kod ürettiğinizde eski kod geçersiz kalır.
+        </p>
+      </section>
+
       <section className="bg-slate-900 p-8 rounded-3xl border border-slate-800 shadow-xl">
         <h3 className="text-xl font-bold text-slate-100 mb-6 flex items-center gap-2">
           <span className="w-2 h-8 bg-[#b026ff] rounded-full"></span>
