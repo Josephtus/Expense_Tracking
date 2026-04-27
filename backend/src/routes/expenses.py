@@ -20,7 +20,7 @@ import structlog
 from pydantic import BaseModel, ValidationError, field_validator
 from sanic import Blueprint, Request
 from sanic.exceptions import BadRequest, Forbidden, NotFound
-from sanic.response import HTTPResponse, json as sanic_json
+from sanic.response import HTTPResponse, json as sanic_json, raw
 from sqlalchemy import select, func
 from sqlalchemy.orm import joinedload
 from sqlalchemy.exc import SQLAlchemyError, IntegrityError
@@ -30,6 +30,10 @@ from src.database import get_session
 from src.models import Expense, Group, GroupMember, User, GroupMemberRole, SettlementStatus
 from src.services.cash_flow import calculate_optimized_debts
 from src.services.security import protected
+
+import pandas as pd
+from fpdf import FPDF
+from io import BytesIO
 
 logger = structlog.get_logger(__name__)
 
@@ -345,6 +349,122 @@ async def list_expenses(request: Request, group_id: int) -> HTTPResponse:
             "count":        len(expenses),
             "expenses":     [_build_expense(e) for e in expenses],
         }, status=200)
+
+
+@expenses_bp.get("/<group_id:int>/export")
+@protected
+@openapi.summary("Harcamaları dışa aktar")
+@openapi.description("Gruba ait tüm harcamaları Excel veya PDF formatında indirir.")
+@openapi.parameter("group_id", int, location="path", required=True)
+@openapi.parameter("format", str, location="query", description="excel veya pdf (default: excel)")
+async def export_expenses(request: Request, group_id: int) -> HTTPResponse:
+    format_type = request.args.get("format", "excel").lower()
+    user_id: int = int(request.ctx.user["sub"])
+    
+    async with get_session() as session:
+        await _get_active_group(session, group_id)
+        await _require_approved_member(session, group_id, user_id)
+        
+        # Tüm silinmemiş harcamaları çek
+        stmt = (
+            select(Expense)
+            .options(joinedload(Expense.added_by_user))
+            .where(
+                Expense.group_id == group_id,
+                Expense.is_deleted.is_(False),
+                Expense.is_settlement.is_(False)
+            )
+            .order_by(Expense.date.desc(), Expense.created_at.desc())
+        )
+        result = await session.execute(stmt)
+        expenses = list(result.scalars().unique().all())
+        
+        if not expenses:
+            raise BadRequest("Dışa aktarılacak harcama bulunamadı.")
+            
+        data = []
+        for e in expenses:
+            data.append({
+                "Ekleyen": f"{e.added_by_user.name} {e.added_by_user.surname}" if e.added_by_user else "Bilinmiyor",
+                "Tarih": e.date.isoformat() if e.date else "-",
+                "Saat": e.created_at.strftime("%H:%M:%S") if e.created_at else "-",
+                "Son Güncelleme": e.updated_at.strftime("%Y-%m-%d %H:%M:%S") if e.updated_at else "-",
+                "Miktar (TL)": float(e.amount),
+                "Kategori": e.category or "-",
+                "Açıklama": e.content or "-",
+                "Fatura URL": f"http://localhost:8000{e.bill_photo}" if e.bill_photo else "-"
+            })
+            
+        if format_type == "excel":
+            df = pd.DataFrame(data)
+            output = BytesIO()
+            # xlsxwriter kullanarak Excel dosyası oluştur
+            with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+                df.to_excel(writer, index=False, sheet_name='Harcamalar')
+                
+                # Sütun genişliklerini ayarla (opsiyonel ama şık durur)
+                workbook  = writer.book
+                worksheet = writer.sheets['Harcamalar']
+                for i, col in enumerate(df.columns):
+                    column_len = max(df[col].astype(str).str.len().max(), len(col)) + 2
+                    worksheet.set_column(i, i, column_len)
+            
+            return raw(
+                output.getvalue(),
+                content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                headers={"Content-Disposition": f"attachment; filename=harcamalar_grup_{group_id}.xlsx"}
+            )
+            
+        elif format_type == "pdf":
+            # PDF oluşturma (Türkçe karakter desteği için DejaVuSans kullanıyoruz)
+            pdf = FPDF()
+            
+            # Docker imajındaki font yollarını kontrol et
+            font_path = "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"
+            font_bold_path = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"
+            
+            font_family = "DejaVu"
+            try:
+                pdf.add_font(font_family, "", font_path)
+                pdf.add_font(font_family, "B", font_bold_path)
+            except Exception as e:
+                logger.warning("pdf.font_load_failed", error=str(e))
+                font_family = "Helvetica" # Fallback
+            
+            pdf.add_page()
+            
+            # Başlık
+            pdf.set_font(font_family, 'B', 16)
+            pdf.cell(0, 15, txt=f"HARCAMA RAPORU - GRUP {group_id}", ln=True, align='C')
+            pdf.ln(10)
+            
+            for idx, item in enumerate(data, 1):
+                pdf.set_font(font_family, 'B', 11)
+                pdf.cell(0, 8, txt=f"{idx}. {item['Ekleyen']} - {item['Miktar (TL)']} TL", ln=True)
+                
+                pdf.set_font(font_family, '', 9)
+                pdf.cell(0, 6, txt=f"Tarih: {item['Tarih']} {item['Saat']} | Kategori: {item['Kategori']}", ln=True)
+                pdf.cell(0, 6, txt=f"Son Güncelleme: {item['Son Güncelleme']}", ln=True)
+                
+                if item['Açıklama'] != "-":
+                    pdf.multi_cell(0, 6, txt=f"Açıklama: {item['Açıklama']}")
+                
+                if item['Fatura URL'] != "-":
+                    pdf.set_text_color(0, 0, 255)
+                    pdf.cell(0, 6, txt=f"Fatura: {item['Fatura URL']}", ln=True, link=item['Fatura URL'])
+                    pdf.set_text_color(0, 0, 0)
+                
+                pdf.ln(4)
+                pdf.line(pdf.get_x(), pdf.get_y(), pdf.get_x() + 190, pdf.get_y())
+                pdf.ln(4)
+                
+            return raw(
+                pdf.output(),
+                content_type="application/pdf",
+                headers={"Content-Disposition": f"attachment; filename=harcamalar_grup_{group_id}.pdf"}
+            )
+        else:
+            raise BadRequest("Geçersiz format. 'excel' veya 'pdf' kullanın.")
 
 
 # =============================================================================

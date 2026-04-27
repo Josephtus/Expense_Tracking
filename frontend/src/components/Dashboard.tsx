@@ -14,7 +14,8 @@ import {
   Menu, 
   X,
   ChevronRight,
-  Edit2
+  Edit2,
+  FileDown
 } from 'lucide-react';
 
 import { ExpenseForm } from './ExpenseForm';
@@ -69,6 +70,29 @@ export const Dashboard: React.FC = () => {
       triggerRefresh();
     } catch (error) {
       alert("Gruptan ayrılırken bir hata oluştu.");
+    }
+  };
+
+  const handleExport = async (format: 'excel' | 'pdf') => {
+    if (!activeGroup) return;
+    try {
+      const response = await apiFetch(`/expenses/${activeGroup.id}/export?format=${format}`);
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || "Dosya oluşturulamadı.");
+      }
+      
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `harcamalar_${activeGroup.name.replace(/\s+/g, '_')}_${new Date().toISOString().split('T')[0]}.${format === 'excel' ? 'xlsx' : 'pdf'}`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+    } catch (err: any) {
+      alert(err.message || "Dışa aktarma sırasında bir hata oluştu.");
     }
   };
 
@@ -339,12 +363,36 @@ export const Dashboard: React.FC = () => {
                             <h3 className="text-2xl font-black text-white">Harcama Kayıtları</h3>
                             <p className="text-slate-500 text-xs font-bold uppercase tracking-widest mt-1">Grup içi tüm finansal hareketler</p>
                           </div>
-                          <button 
-                            onClick={() => setIsModalOpen(true)}
-                            className="px-8 py-4 bg-[#b026ff] text-white rounded-2xl font-black text-xs uppercase tracking-widest hover:bg-[#c455ff] hover:shadow-[0_0_30px_rgba(176,38,255,0.4)] transition-all"
-                          >
-                            + Harcama Ekle
-                          </button>
+                          <div className="flex items-center gap-3">
+                            <div className="relative group/export">
+                              <button 
+                                className="px-6 py-4 bg-white/5 border border-white/10 text-white rounded-2xl font-black text-[10px] uppercase tracking-widest hover:bg-white/10 transition-all flex items-center gap-2"
+                              >
+                                <FileDown size={14} /> Dışa Aktar
+                              </button>
+                              <div className="absolute top-full right-0 mt-2 w-44 bg-slate-900/90 backdrop-blur-xl border border-white/10 rounded-2xl shadow-2xl opacity-0 scale-95 invisible group-hover/export:opacity-100 group-hover/export:scale-100 group-hover/export:visible transition-all z-[60] overflow-hidden p-1.5">
+                                <button 
+                                  onClick={() => handleExport('excel')}
+                                  className="w-full px-4 py-3 text-left text-[10px] font-black uppercase tracking-widest text-slate-400 hover:bg-[#00f0ff]/10 hover:text-[#00f0ff] rounded-xl transition-all flex items-center gap-3"
+                                >
+                                  <span className="text-sm">📊</span> EXCEL (.XLSX)
+                                </button>
+                                <button 
+                                  onClick={() => handleExport('pdf')}
+                                  className="w-full px-4 py-3 text-left text-[10px] font-black uppercase tracking-widest text-slate-400 hover:bg-red-500/10 hover:text-red-400 rounded-xl transition-all flex items-center gap-3"
+                                >
+                                  <span className="text-sm">📄</span> PDF BELGESİ
+                                </button>
+                              </div>
+                            </div>
+
+                            <button 
+                              onClick={() => setIsModalOpen(true)}
+                              className="px-8 py-4 bg-[#b026ff] text-white rounded-2xl font-black text-[10px] uppercase tracking-widest hover:bg-[#c455ff] hover:shadow-[0_0_30px_rgba(176,38,255,0.4)] transition-all flex items-center gap-2"
+                            >
+                              <Plus size={14} /> Harcama Ekle
+                            </button>
+                          </div>
                         </div>
                         <ExpenseList />
                       </div>
