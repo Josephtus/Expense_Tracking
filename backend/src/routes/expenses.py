@@ -79,17 +79,28 @@ class UpdateExpenseRequest(BaseModel):
         return v
 
 
+from src.services.image import optimize_image
+
 async def _save_receipt(body: bytes, original_name: str) -> str:
-    """Faturayı diske async yazar, URL yolunu döner."""
+    """Faturayı optimize eder ve WebP olarak diske yazar."""
     try:
-        ext = Path(original_name).suffix.lower()
-        if ext not in EXTENSION_TO_MIME:
-            ext = ".jpg"
-        fname = f"{uuid4().hex}{ext}"
+        # Görseli optimize et
+        optimized_body = optimize_image(body)
+        
+        # Uzantıyı .webp olarak sabitle
+        fname = f"{uuid4().hex}.webp"
         path = RECEIPT_UPLOAD_DIR / fname
         RECEIPT_UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+        
         async with aiofiles.open(path, "wb") as f:
-            await f.write(body)
+            await f.write(optimized_body)
+            
+        logger.info(
+            "expense.receipt_saved", 
+            path=str(path), 
+            original_size=len(body),
+            saved_size=len(optimized_body)
+        )
         return f"/uploads/receipts/{fname}"
     except (OSError, IOError) as exc:
         logger.error("expense.save_receipt_failed", error=str(exc))
