@@ -87,12 +87,18 @@ export const Register: React.FC<RegisterProps> = ({ onRegisterSuccess }) => {
           <AnimatePresence mode="wait">
             {serverError && (
               <motion.div 
-                initial={{ opacity: 0, scale: 0.95 }}
-                animate={{ opacity: 1, scale: 1 }}
-                className="mb-8 p-4 rounded-2xl bg-red-500/10 border border-red-500/20 text-red-400 text-xs flex items-center gap-3"
+                initial={{ opacity: 0, y: -10, scale: 0.95 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.95 }}
+                className="mb-8 p-4 rounded-2xl bg-red-500/10 border border-red-500/20 text-red-400 text-xs flex items-center gap-3 shadow-[0_0_20px_rgba(239,68,68,0.1)]"
               >
-                <AlertCircle size={16} />
-                {serverError}
+                <div className="w-8 h-8 rounded-full bg-red-500/20 flex items-center justify-center shrink-0">
+                  <AlertCircle size={16} className="text-red-500" />
+                </div>
+                <div className="flex-1">
+                  <p className="font-black uppercase tracking-widest text-[9px] mb-0.5">Kayıt Hatası</p>
+                  <p className="text-slate-300 font-medium leading-relaxed">{serverError}</p>
+                </div>
               </motion.div>
             )}
           </AnimatePresence>
@@ -179,7 +185,7 @@ export const Register: React.FC<RegisterProps> = ({ onRegisterSuccess }) => {
                   type="email" 
                   {...register('mail')}
                   className={`w-full pl-12 pr-4 py-4 rounded-2xl bg-slate-950/50 border transition-all ${
-                    errors.mail ? 'border-red-500/50 focus:border-red-500' : 'border-white/5 focus:border-[#b026ff]/50'
+                    errors.mail || serverError ? 'border-red-500/50 focus:border-red-500' : 'border-white/5 focus:border-[#b026ff]/50'
                   } text-white placeholder:text-slate-600 focus:outline-none focus:bg-slate-950`}
                   placeholder="isim@sirket.com"
                 />

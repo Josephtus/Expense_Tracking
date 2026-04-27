@@ -146,6 +146,11 @@ export const GroupManagement: React.FC = () => {
     }
   };
 
+  const handleCopyCode = () => {
+    navigator.clipboard.writeText(groupInfo.invite_code);
+    alert("Davet kodu kopyalandı!");
+  };
+
   const handleRegenerateCode = async () => {
     if (!groupId) return;
     if (!window.confirm("Davet kodunu yenilemek istediğinize emin misiniz? Eski kod artık çalışmayacaktır.")) return;
@@ -202,12 +207,20 @@ export const GroupManagement: React.FC = () => {
             <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">Aktif Davet Kodu</p>
             <p className="text-2xl font-mono font-black text-[#00f0ff] tracking-widest">{groupInfo.invite_code}</p>
           </div>
-          <button 
-            onClick={handleRegenerateCode}
-            className="w-full sm:w-auto px-6 py-3 bg-white/5 border border-white/10 text-white rounded-xl text-xs font-black uppercase tracking-widest hover:bg-white/10 transition-all active:scale-95"
-          >
-            YENİ KOD ÜRET
-          </button>
+          <div className="flex gap-2 w-full sm:w-auto">
+            <button 
+              onClick={handleCopyCode}
+              className="flex-1 sm:flex-none px-6 py-3 bg-[#00f0ff]/10 border border-[#00f0ff]/20 text-[#00f0ff] rounded-xl text-xs font-black uppercase tracking-widest hover:bg-[#00f0ff]/20 transition-all active:scale-95"
+            >
+              KODU KOPYALA
+            </button>
+            <button 
+              onClick={handleRegenerateCode}
+              className="flex-1 sm:flex-none px-6 py-3 bg-white/5 border border-white/10 text-white rounded-xl text-xs font-black uppercase tracking-widest hover:bg-white/10 transition-all active:scale-95"
+            >
+              YENİ KOD ÜRET
+            </button>
+          </div>
         </div>
         <p className="text-[10px] text-slate-500 mt-4 italic">
           * Bu kodu gruptan birileriyle paylaşarak katılmalarını sağlayabilirsiniz. Yeni kod ürettiğinizde eski kod geçersiz kalır.
