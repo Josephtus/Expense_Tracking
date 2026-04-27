@@ -216,6 +216,7 @@ class Group(Base):
     __tablename__ = "groups"
     __table_args__ = (
         Index("ix_groups_is_approved", "is_approved"),
+        Index("ix_groups_invite_code", "invite_code"),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
@@ -234,6 +235,9 @@ class Group(Base):
     )
     custom_categories: Mapped[Optional[str]] = mapped_column(
         Text, nullable=True, comment="JSON string list of {name, icon}"
+    )
+    invite_code: Mapped[str] = mapped_column(
+        String(50), unique=True, nullable=False, comment="Gruba katılmak için kullanılan # ile başlayan özel kod"
     )
 
     # ── İlişkiler ───────────────────────────────────────────────────────────
@@ -279,6 +283,9 @@ class GroupMember(Base):
         nullable=False,
         default=GroupMemberRole.USER,
         comment="Grup içi rol: user veya group_leader",
+    )
+    nickname: Mapped[Optional[str]] = mapped_column(
+        String(200), nullable=True, comment="Kullanıcının bu gruba verdiği özel isim"
     )
     joined_at: Mapped[datetime] = mapped_column(
         DateTime, nullable=False, server_default=func.now()
