@@ -48,3 +48,11 @@ def detect_mime(data: bytes) -> str | None:
                 return None
             return mime_type
     return None
+
+
+def generate_invite_code(length=12):
+    """Grup veya kullanıcı için benzersiz, rastgele ve '#' ile başlayan bir kod üretir."""
+    import string
+    import secrets
+    chars = string.ascii_uppercase + string.digits
+    return "#" + "".join(secrets.choice(chars) for _ in range(length))

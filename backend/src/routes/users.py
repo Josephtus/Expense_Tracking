@@ -109,6 +109,7 @@ def _build_public_profile(user: User) -> dict:
         "profile_photo": user.profile_photo,
         "age": user.age,
         "role": user.role.value,
+        "invite_code": user.invite_code,
         "created_at": user.created_at.isoformat() if user.created_at else None,
     }
 
@@ -527,7 +528,8 @@ async def search_users(request: Request) -> HTTPResponse:
             or_(
                 User.name.ilike(f"%{query}%"),
                 User.surname.ilike(f"%{query}%"),
-                User.mail.ilike(f"%{query}%")
+                User.mail.ilike(f"%{query}%"),
+                User.invite_code == query if query.startswith("#") else User.invite_code == f"#{query}"
             ),
             User.is_active.is_(True),
             User.deleted_at.is_(None)
