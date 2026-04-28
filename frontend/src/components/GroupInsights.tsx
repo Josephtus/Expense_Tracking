@@ -234,10 +234,12 @@ export const GroupInsights: React.FC = () => {
                   <svg className="w-full h-full rotate-[-90deg] overflow-visible" viewBox="-18 -18 36 36">
                     {stats.categories.map((c, i) => {
                       const percentage = (c.total / stats.total);
-                      let startAngle = 0;
-                      for(let j=0; j<i; j++) startAngle += (stats.categories[j].total / stats.total) * 2 * Math.PI;
-                      const endAngle = startAngle + percentage * 2 * Math.PI;
-                      const midAngle = startAngle + (percentage * Math.PI);
+                      let startAngleSum = 0;
+                      for(let j=0; j<i; j++) startAngleSum += (stats.categories[j].total / stats.total) * 2 * Math.PI;
+                      
+                      const startAngle = startAngleSum;
+                      const endAngle = startAngleSum + (percentage * 2 * Math.PI);
+                      const midAngle = startAngleSum + (percentage * Math.PI);
                       
                       const x1 = Math.cos(startAngle) * 16;
                       const y1 = Math.sin(startAngle) * 16;
@@ -254,23 +256,27 @@ export const GroupInsights: React.FC = () => {
                           key={i} 
                           d={d}
                           fill={c.color}
+                          stroke="#0f172a"
+                          strokeWidth={0.8} // Stroke'un yarısı fill altında kalacağı için biraz kalın tuttuk
+                          strokeLinejoin="round"
+                          style={{ paintOrder: 'stroke fill' }} // Merkeze tam değmesi için kritik ayar
                           initial={{ opacity: 0, scale: 0 }}
                           animate={{ 
-                            opacity: 1, 
-                            scale: activeIndex === i ? 1.05 : 1,
+                            opacity: activeIndex === null || activeIndex === i ? 1 : 0.35, 
+                            scale: activeIndex === i ? 1.06 : 1,
                             x: explodeX,
                             y: explodeY,
-                            filter: activeIndex === i ? 'brightness(1.2) drop-shadow(0 0 12px '+c.color+'66)' : 'brightness(1)'
+                            filter: activeIndex === i 
+                              ? 'brightness(1.15) drop-shadow(0_0_15px_'+c.color+'99)' 
+                              : 'brightness(0.95) blur(0px)',
                           }}
                           transition={{ 
-                            duration: 0.2,
-                            type: 'spring',
-                            stiffness: 400,
-                            damping: 25
+                            duration: 0.5,
+                            ease: [0.23, 1, 0.32, 1]
                           }}
                           onMouseEnter={() => setActiveIndex(i)}
                           onMouseLeave={() => setActiveIndex(null)}
-                          className="cursor-pointer transition-all duration-150"
+                          className="cursor-pointer transition-all outline-none"
                         />
                       );
                     })}

@@ -1,26 +1,31 @@
 import asyncio
-from sqlalchemy import select
-from src.database import get_session, dispose_engine
-from src.models import Group
+from src.database import get_session
+from src.models import Group, GroupMember, Expense
+from sqlalchemy import select, func
 
 async def check():
     async with get_session() as session:
-        g = await session.get(Group, 69)
-        print(f"Group 69 exists: {g is not None}")
-        if g:
-            print(f"Approved: {g.is_approved}")
+        user_id = 1 # Varsayılan test user id
         
-        stmt = select(Group)
-        all_groups = (await session.scalars(stmt)).all()
-        print(f"Total groups: {len(all_groups)}")
-        if all_groups:
-             print("First 5 groups IDs:", [grp.id for grp in all_groups[:5]])
-
-async def main():
-    try:
-        await check()
-    finally:
-        await dispose_engine()
+        last_exp_sub = (
+            select(Expense.group_id, func.max(Expense.created_at).label("last_act"))
+            .where(Expense.is_deleted.is_(False))
+            .group_by(Expense.group_id)
+            .subquery()
+        )
+        
+        stmt = (
+            select(Group, GroupMember)
+            .join(GroupMember, (GroupMember.group_id == Group.id) & (GroupMember.user_id == user_id))
+            .outerjoin(last_exp_sub, last_exp_sub.c.group_id == Group.id)
+            .order_by(last_exp_sub.c.last_act.desc().nullslast(), Group.created_at.desc())
+            .limit(3)
+        )
+        
+        print("SQL:", stmt)
+        result = await session.execute(stmt)
+        for row in result:
+            print("Row:", row)
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    asyncio.run(check())
