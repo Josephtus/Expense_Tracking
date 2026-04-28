@@ -9,6 +9,7 @@ Endpoints:
   GET    /api/expenses/<group_id>                → Aktif harcamaları listele
   DELETE /api/expenses/<group_id>/<expense_id>   → Soft delete (yalnızca ekleyen)
   GET    /api/expenses/<group_id>/debts          → Borç optimizasyonu
+  GET    /api/expenses/summary/me                → Kullanıcının genel harcama özeti
 """
 
 from datetime import date, datetime, timezone
@@ -20,14 +21,20 @@ import structlog
 from pydantic import BaseModel, ValidationError, field_validator
 from sanic import Blueprint, Request
 from sanic.exceptions import BadRequest, Forbidden, NotFound
-from sanic.response import HTTPResponse, json as sanic_json
-from sqlalchemy import select
+from sanic.response import HTTPResponse, json as sanic_json, raw
+from sqlalchemy import select, func
 from sqlalchemy.orm import joinedload
+from sqlalchemy.exc import SQLAlchemyError, IntegrityError
 
+from sanic_ext import openapi
 from src.database import get_session
 from src.models import Expense, Group, GroupMember, User, GroupMemberRole, SettlementStatus
 from src.services.cash_flow import calculate_optimized_debts
 from src.services.security import protected
+
+import pandas as pd
+from fpdf import FPDF
+from io import BytesIO
 
 logger = structlog.get_logger(__name__)
 
@@ -77,17 +84,32 @@ class UpdateExpenseRequest(BaseModel):
         return v
 
 
+from src.services.image import optimize_image
+
 async def _save_receipt(body: bytes, original_name: str) -> str:
-    """Faturayı diske async yazar, URL yolunu döner."""
-    ext = Path(original_name).suffix.lower()
-    if ext not in EXTENSION_TO_MIME:
-        ext = ".jpg"
-    fname = f"{uuid4().hex}{ext}"
-    path = RECEIPT_UPLOAD_DIR / fname
-    RECEIPT_UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
-    async with aiofiles.open(path, "wb") as f:
-        await f.write(body)
-    return f"/uploads/receipts/{fname}"
+    """Faturayı optimize eder ve WebP olarak diske yazar."""
+    try:
+        # Görseli optimize et
+        optimized_body = optimize_image(body)
+        
+        # Uzantıyı .webp olarak sabitle
+        fname = f"{uuid4().hex}.webp"
+        path = RECEIPT_UPLOAD_DIR / fname
+        RECEIPT_UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+        
+        async with aiofiles.open(path, "wb") as f:
+            await f.write(optimized_body)
+            
+        logger.info(
+            "expense.receipt_saved", 
+            path=str(path), 
+            original_size=len(body),
+            saved_size=len(optimized_body)
+        )
+        return f"/uploads/receipts/{fname}"
+    except (OSError, IOError) as exc:
+        logger.error("expense.save_receipt_failed", error=str(exc))
+        raise BadRequest("Fatura dosyası kaydedilemedi.")
 
 
 async def _require_approved_member(session, group_id: int, user_id: int) -> GroupMember:
@@ -122,7 +144,7 @@ def _build_expense(exp: Expense) -> dict:
         "bill_photo":    exp.bill_photo,
         "date":          exp.date.isoformat() if exp.date else None,
         "is_settlement": exp.is_settlement,
-        "status":        exp.settlement_status.value.lower() if exp.settlement_status else None,
+        "status":        exp.settlement_status.value if exp.settlement_status else None,
         "category":      exp.category,
         "created_at":    exp.created_at.isoformat() if exp.created_at else None,
         "updated_at":    exp.updated_at.isoformat() if exp.updated_at else None,
@@ -135,6 +157,11 @@ def _build_expense(exp: Expense) -> dict:
 
 @expenses_bp.post("/<group_id:int>")
 @protected
+@openapi.summary("Gruba harcama ekle")
+@openapi.description("Belirtilen gruba yeni bir harcama ekler. Resim yükleme desteği (multipart/form-data) mevcuttur.")
+@openapi.parameter("group_id", int, location="path", required=True, description="Grup ID'si")
+@openapi.parameter("Authorization", str, location="header", required=True, description="Bearer <token>")
+@openapi.response(201, {"application/json": dict}, "Harcama başarıyla eklendi")
 async def add_expense(request: Request, group_id: int) -> HTTPResponse:
     """
     Gruba yeni harcama ekler. multipart/form-data beklenir.
@@ -226,21 +253,24 @@ async def add_expense(request: Request, group_id: int) -> HTTPResponse:
             category   = category,
             is_deleted = False,
         )
-        logger.debug("expense.inserting", group_id=group_id, user_id=user_id, amount=amount)
-        session.add(expense)
-        await session.commit()
-        logger.debug("expense.committed", expense_id=expense.id)
-        
-        # Kullanıcı bilgisini de içeren güncel harcamayı çek (Lazy-loading hatasını önlemek için)
-        stmt = select(Expense).options(joinedload(Expense.added_by_user)).where(Expense.id == expense.id)
-        result = await session.execute(stmt)
-        expense = result.scalars().unique().one()
-        logger.debug("expense.reloaded", expense_id=expense.id)
+        try:
+            session.add(expense)
+            await session.commit()
+            logger.debug("expense.committed", expense_id=expense.id)
+            
+            # Kullanıcı bilgisini de içeren güncel harcamayı çek (Lazy-loading hatasını önlemek için)
+            stmt = select(Expense).options(joinedload(Expense.added_by_user)).where(Expense.id == expense.id)
+            result = await session.execute(stmt)
+            expense = result.scalars().unique().one()
+            logger.debug("expense.reloaded", expense_id=expense.id)
 
+            logger.info("expense.added", expense_id=expense.id, group_id=group_id, user_id=user_id)
 
-        logger.info("expense.added", expense_id=expense.id, group_id=group_id, user_id=user_id)
-
-        return sanic_json({"message": "Harcama eklendi.", "expense": _build_expense(expense)}, status=201)
+            return sanic_json({"message": "Harcama eklendi.", "expense": _build_expense(expense)}, status=201)
+        except SQLAlchemyError as exc:
+            logger.error("expense.add_db_error", error=str(exc))
+            await session.rollback()
+            raise BadRequest("Harcama kaydedilirken veritabanı hatası oluştu.")
 
 
 # =============================================================================
@@ -249,6 +279,13 @@ async def add_expense(request: Request, group_id: int) -> HTTPResponse:
 
 @expenses_bp.get("/<group_id:int>")
 @protected
+@openapi.summary("Grup harcamalarını listele")
+@openapi.description("Bir gruba ait silinmemiş normal harcamaları sayfalı olarak getirir.")
+@openapi.parameter("group_id", int, location="path", required=True, description="Grup ID'si")
+@openapi.parameter("page", int, location="query", description="Sayfa numarası (default: 1)")
+@openapi.parameter("limit", int, location="query", description="Sayfa başı kayıt (default: 20)")
+@openapi.parameter("Authorization", str, location="header", required=True, description="Bearer <token>")
+@openapi.response(200, {"application/json": dict}, "Harcama listesi")
 async def list_expenses(request: Request, group_id: int) -> HTTPResponse:
     """
     Grubun is_deleted=False olan harcamalarını listeler.
@@ -315,12 +352,171 @@ async def list_expenses(request: Request, group_id: int) -> HTTPResponse:
         }, status=200)
 
 
+@expenses_bp.get("/summary/me")
+@protected
+@openapi.summary("Kullanıcının harcama özeti")
+@openapi.description("Kullanıcının tüm gruplardaki harcamalarını kategori bazlı özetler.")
+async def get_my_spending_summary(request: Request) -> HTTPResponse:
+    user_id = int(request.ctx.user["sub"])
+    
+    async with get_session() as session:
+        # Silinmemiş ve hesaplaşma olmayan harcamaları kategori bazlı topla
+        stmt = (
+            select(Expense.category, func.sum(Expense.amount).label("total"))
+            .where(
+                Expense.added_by == user_id,
+                Expense.is_deleted.is_(False),
+                Expense.is_settlement.is_(False)
+            )
+            .group_by(Expense.category)
+        )
+        result = await session.execute(stmt)
+        rows = result.all()
+        
+        summary_data = []
+        total_spending = 0.0
+        
+        for row in rows:
+            cat_total = float(row.total or 0)
+            summary_data.append({
+                "category": row.category or "Diğer",
+                "total": cat_total
+            })
+            total_spending += cat_total
+            
+        return sanic_json({
+            "total_spending": total_spending,
+            "summary": sorted(summary_data, key=lambda x: x["total"], reverse=True)
+        })
+
+
+@expenses_bp.get("/<group_id:int>/export")
+@protected
+@openapi.summary("Harcamaları dışa aktar")
+@openapi.description("Gruba ait tüm harcamaları Excel veya PDF formatında indirir.")
+@openapi.parameter("group_id", int, location="path", required=True)
+@openapi.parameter("format", str, location="query", description="excel veya pdf (default: excel)")
+async def export_expenses(request: Request, group_id: int) -> HTTPResponse:
+    format_type = request.args.get("format", "excel").lower()
+    user_id: int = int(request.ctx.user["sub"])
+    
+    async with get_session() as session:
+        await _get_active_group(session, group_id)
+        await _require_approved_member(session, group_id, user_id)
+        
+        # Tüm silinmemiş harcamaları çek
+        stmt = (
+            select(Expense)
+            .options(joinedload(Expense.added_by_user))
+            .where(
+                Expense.group_id == group_id,
+                Expense.is_deleted.is_(False),
+                Expense.is_settlement.is_(False)
+            )
+            .order_by(Expense.date.desc(), Expense.created_at.desc())
+        )
+        result = await session.execute(stmt)
+        expenses = list(result.scalars().unique().all())
+        
+        if not expenses:
+            raise BadRequest("Dışa aktarılacak harcama bulunamadı.")
+            
+        data = []
+        for e in expenses:
+            data.append({
+                "Ekleyen": f"{e.added_by_user.name} {e.added_by_user.surname}" if e.added_by_user else "Bilinmiyor",
+                "Tarih": e.date.isoformat() if e.date else "-",
+                "Saat": e.created_at.strftime("%H:%M:%S") if e.created_at else "-",
+                "Son Güncelleme": e.updated_at.strftime("%Y-%m-%d %H:%M:%S") if e.updated_at else "-",
+                "Miktar (TL)": float(e.amount),
+                "Kategori": e.category or "-",
+                "Açıklama": e.content or "-",
+                "Fatura URL": f"http://localhost:8000{e.bill_photo}" if e.bill_photo else "-"
+            })
+            
+        if format_type == "excel":
+            df = pd.DataFrame(data)
+            output = BytesIO()
+            # xlsxwriter kullanarak Excel dosyası oluştur
+            with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+                df.to_excel(writer, index=False, sheet_name='Harcamalar')
+                
+                # Sütun genişliklerini ayarla (opsiyonel ama şık durur)
+                workbook  = writer.book
+                worksheet = writer.sheets['Harcamalar']
+                for i, col in enumerate(df.columns):
+                    column_len = max(df[col].astype(str).str.len().max(), len(col)) + 2
+                    worksheet.set_column(i, i, column_len)
+            
+            return raw(
+                output.getvalue(),
+                content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                headers={"Content-Disposition": f"attachment; filename=harcamalar_grup_{group_id}.xlsx"}
+            )
+            
+        elif format_type == "pdf":
+            # PDF oluşturma (Türkçe karakter desteği için DejaVuSans kullanıyoruz)
+            pdf = FPDF()
+            
+            # Docker imajındaki font yollarını kontrol et
+            font_path = "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"
+            font_bold_path = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"
+            
+            font_family = "DejaVu"
+            try:
+                pdf.add_font(font_family, "", font_path)
+                pdf.add_font(font_family, "B", font_bold_path)
+            except Exception as e:
+                logger.warning("pdf.font_load_failed", error=str(e))
+                font_family = "Helvetica" # Fallback
+            
+            pdf.add_page()
+            
+            # Başlık
+            pdf.set_font(font_family, 'B', 16)
+            pdf.cell(0, 15, txt=f"HARCAMA RAPORU - GRUP {group_id}", ln=True, align='C')
+            pdf.ln(10)
+            
+            for idx, item in enumerate(data, 1):
+                pdf.set_font(font_family, 'B', 11)
+                pdf.cell(0, 8, txt=f"{idx}. {item['Ekleyen']} - {item['Miktar (TL)']} TL", ln=True)
+                
+                pdf.set_font(font_family, '', 9)
+                pdf.cell(0, 6, txt=f"Tarih: {item['Tarih']} {item['Saat']} | Kategori: {item['Kategori']}", ln=True)
+                pdf.cell(0, 6, txt=f"Son Güncelleme: {item['Son Güncelleme']}", ln=True)
+                
+                if item['Açıklama'] != "-":
+                    pdf.multi_cell(0, 6, txt=f"Açıklama: {item['Açıklama']}")
+                
+                if item['Fatura URL'] != "-":
+                    pdf.set_text_color(0, 0, 255)
+                    pdf.cell(0, 6, txt=f"Fatura: {item['Fatura URL']}", ln=True, link=item['Fatura URL'])
+                    pdf.set_text_color(0, 0, 0)
+                
+                pdf.ln(4)
+                pdf.line(pdf.get_x(), pdf.get_y(), pdf.get_x() + 190, pdf.get_y())
+                pdf.ln(4)
+                
+            return raw(
+                pdf.output(),
+                content_type="application/pdf",
+                headers={"Content-Disposition": f"attachment; filename=harcamalar_grup_{group_id}.pdf"}
+            )
+        else:
+            raise BadRequest("Geçersiz format. 'excel' veya 'pdf' kullanın.")
+
+
 # =============================================================================
 # ENDPOINT 3: GET /api/expenses/<group_id>/debts — Borç Optimizasyonu
 # =============================================================================
 
 @expenses_bp.get("/<group_id:int>/debts")
 @protected
+@openapi.summary("Borç optimizasyonunu hesapla")
+@openapi.description("Gruptaki harcamalara göre kimin kime ne kadar borcu olduğunu optimize edilmiş (minimum işlem) şekilde döner.")
+@openapi.parameter("group_id", int, location="path", required=True, description="Grup ID'si")
+@openapi.parameter("Authorization", str, location="header", required=True, description="Bearer <token>")
+@openapi.response(200, {"application/json": dict}, "Optimize edilmiş borç listesi")
 async def get_debts(request: Request, group_id: int) -> HTTPResponse:
     """
     Grubun kimin kime ne kadar ödemesi gerektiğini hesaplar.
@@ -517,15 +713,21 @@ async def update_expense(request: Request, group_id: int, expense_id: int) -> HT
 
         expense.updated_at = datetime.now(timezone.utc)
 
-        logger.info("expense.updated", expense_id=expense_id, user_id=user_id, updated_fields=list(updated_fields.keys()))
+        try:
+            await session.commit()
+            logger.info("expense.updated", expense_id=expense_id, user_id=user_id, updated_fields=list(updated_fields.keys()))
 
-        return sanic_json(
-            {
-                "message": "Harcama başarıyla güncellendi.",
-                "expense": _build_expense(expense)
-            }, 
-            status=200
-        )
+            return sanic_json(
+                {
+                    "message": "Harcama başarıyla güncellendi.",
+                    "expense": _build_expense(expense)
+                }, 
+                status=200
+            )
+        except SQLAlchemyError as exc:
+            logger.error("expense.update_db_error", error=str(exc))
+            await session.rollback()
+            raise BadRequest("Harcama güncellenirken veritabanı hatası oluştu.")
 
 
 # =============================================================================
@@ -611,7 +813,7 @@ async def list_settlements(request: Request, group_id: int) -> HTTPResponse:
                     "to_user_id": s.recipient_id,
                     "to_user_name": f"{s.recipient_user.name} {s.recipient_user.surname}" if s.recipient_user else "Bilinmeyen",
                     "amount": float(s.amount),
-                    "status": s.settlement_status.value.lower() if s.settlement_status else "pending",
+                    "status": s.settlement_status.value if s.settlement_status else "PENDING",
                     "created_at": s.created_at.isoformat()
                 } for s in settlements
             ]

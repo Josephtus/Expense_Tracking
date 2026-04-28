@@ -13,7 +13,7 @@ Endpoints:
   POST /api/groups/<group_id>/leave                         → Gruptan ayrıl
 
 İş Kuralları:
-  - Grup oluşturulduğunda is_approved=False (Admin onayı bekler)
+  - Grup oluşturulduğunda is_approved=True (Admin onayı gerekmez, ancak spam önlemi vardır)
   - Kurucu GroupLeader olarak is_approved=True ile eklenir
   - Katılma isteği is_approved=False olarak eklenir
   - Yalnızca o grubun GROUP_LEADER'ı (is_approved=True) üye onaylayabilir
@@ -21,20 +21,65 @@ Endpoints:
 """
 
 import structlog
+import string
+import secrets
 from pydantic import BaseModel, ValidationError, field_validator
 from sanic import Blueprint, Request
 from sanic.exceptions import BadRequest, Forbidden, NotFound
 from sanic.response import HTTPResponse, json as sanic_json
-from sqlalchemy import asc, select
+from sqlalchemy import asc, select, func
 from sqlalchemy.orm import selectinload
 
 from src.database import get_session
-from src.models import Group, GroupMember, GroupMemberRole, User, GroupBan
-from src.services.security import protected
+from src.models import Group, GroupMember, GroupMemberRole, User, GroupBan, Expense
+from src.services.security import protected, rate_limit
 
 logger = structlog.get_logger(__name__)
 
 groups_bp = Blueprint("groups", url_prefix="/api/groups")
+
+
+# =============================================================================
+# Utils
+# =============================================================================
+
+def generate_invite_code(length=12):
+    """Grup için benzersiz, rastgele ve '#' ile başlayan bir kod üretir."""
+    chars = string.ascii_uppercase + string.digits
+    return "#" + "".join(secrets.choice(chars) for _ in range(length))
+
+
+async def _get_auto_nickname(session, user_id: int, group_name: str, exclude_group_id: int | None = None) -> str | None:
+    """
+    Kullanıcının üye olduğu diğer gruplarla isim çakışması varsa 
+    otomatik bir takma ad (örn: GrupAdı(2)) önerir.
+    """
+    stmt = (
+        select(Group.name, GroupMember.nickname)
+        .join(GroupMember, GroupMember.group_id == Group.id)
+        .where(GroupMember.user_id == user_id, GroupMember.is_approved.is_(True))
+    )
+    if exclude_group_id:
+        stmt = stmt.where(Group.id != exclude_group_id)
+        
+    result = await session.execute(stmt)
+    rows = result.all()
+    
+    # Bu isimde başka bir grup var mı?
+    has_same_name = any(row.name == group_name for row in rows)
+    if not has_same_name:
+        return None
+        
+    # Çakışma var, uygun etiketi bul
+    used_labels = []
+    for row in rows:
+        used_labels.append(row.nickname if row.nickname else row.name)
+        
+    count = 2
+    while f"{group_name}({count})" in used_labels:
+        count += 1
+    
+    return f"{group_name}({count})"
 
 
 # =============================================================================
@@ -89,6 +134,20 @@ class UpdateGroupRequest(BaseModel):
             v = v.strip() or None
         return v
 
+class SetNicknameRequest(BaseModel):
+    """Grup takma adını belirleme isteği."""
+    nickname: str | None = None
+
+    @field_validator("nickname")
+    @classmethod
+    def validate_nickname(cls, v: str | None) -> str | None:
+        if v is not None:
+            v = v.strip()
+            if not v: return None
+            if len(v) > 200:
+                raise ValueError("Takma ad en fazla 200 karakter olabilir.")
+        return v
+
 
 # =============================================================================
 # Helpers
@@ -103,6 +162,7 @@ def _build_group_response(group: Group) -> dict:
         "is_approved": group.is_approved,
         "created_at": group.created_at.isoformat() if group.created_at else None,
         "custom_categories": group.custom_categories,
+        "invite_code": group.invite_code,
     }
 
 
@@ -113,6 +173,7 @@ def _build_member_response(member: GroupMember) -> dict:
         "group_id": member.group_id,
         "role": member.role.value,
         "is_approved": member.is_approved,
+        "nickname": member.nickname,
         "joined_at": member.joined_at.isoformat() if member.joined_at else None,
     }
 
@@ -161,12 +222,13 @@ async def _get_membership(session, group_id: int, user_id: int) -> GroupMember |
 
 @groups_bp.post("/")
 @protected
+@rate_limit(limit=3, window=3600, key_prefix="group_create")  # Saatte en fazla 3 grup
 async def create_group(request: Request) -> HTTPResponse:
     """
     Yeni grup oluşturur.
 
     İş Kuralları:
-      - Grup `is_approved=False` olarak oluşturulur (Admin onayı gerekir).
+      - Grup `is_approved=True` olarak oluşturulur (Spam önlemi: Saatte 3 grup sınırı ve toplam 10 liderlik sınırı).
       - Kurucusu GroupMember'a `role=GROUP_LEADER`, `is_approved=True` ile eklenir.
 
     Request Body (JSON):
@@ -175,7 +237,7 @@ async def create_group(request: Request) -> HTTPResponse:
 
     Responses:
         201 → Grup oluşturuldu, lider olarak eklendi
-        400 → Validasyon hatası
+        400 → Validasyon hatası veya spam sınırı
     """
     body = request.json
     if not body:
@@ -193,21 +255,36 @@ async def create_group(request: Request) -> HTTPResponse:
     creator_id: int = int(request.ctx.user["sub"])
 
     async with get_session() as session:
-        # Grubu oluştur (Admin onayı bekleyecek)
+        # Spam önlemi: Kullanıcının lider olduğu grup sayısını kontrol et
+        from sqlalchemy import func
+        stmt_count = select(func.count(GroupMember.id)).where(
+            GroupMember.user_id == creator_id,
+            GroupMember.role == GroupMemberRole.GROUP_LEADER,
+            GroupMember.is_approved.is_(True)
+        )
+        led_group_count = await session.scalar(stmt_count) or 0
+        
+        if led_group_count >= 10:
+            raise BadRequest("Aynı anda en fazla 10 grubun lideri olabilirsiniz. Yeni grup açmak için eski gruplarınızdan birini devredin veya ayrılın.")
+
+        # Grubu oluştur (Admin onayı artık gerekmiyor)
         new_group = Group(
             name=data.name,
             content=data.content,
-            is_approved=False,
+            is_approved=True,
+            invite_code=generate_invite_code()
         )
         session.add(new_group)
         await session.flush()  # ID al
 
         # Kurucuyu GROUP_LEADER olarak ve onaylı şekilde ekle
+        auto_nick = await _get_auto_nickname(session, creator_id, new_group.name, exclude_group_id=new_group.id)
         leader_membership = GroupMember(
             user_id=creator_id,
             group_id=new_group.id,
             role=GroupMemberRole.GROUP_LEADER,
-            is_approved=True,  # Kurucu direkt onaylı lider
+            is_approved=True,
+            nickname=auto_nick
         )
         session.add(leader_membership)
 
@@ -224,7 +301,7 @@ async def create_group(request: Request) -> HTTPResponse:
 
         return sanic_json(
             {
-                "message": "Grup oluşturma isteği alındı. Admin onayı bekleniyor.",
+                "message": "Grup başarıyla oluşturuldu.",
                 "group": _build_group_response(new_group),
                 "your_membership": _build_member_response(leader_membership),
             },
@@ -259,73 +336,40 @@ async def get_group(request: Request, group_id: int) -> HTTPResponse:
 @protected
 async def list_groups(request: Request) -> HTTPResponse:
     """
-    Admin tarafından onaylanmış tüm grupları listeler.
-    Kullanıcıların katılacak grup bulabilmesi için herkese açıktır (token gerekli).
-
-    Query Parameters (opsiyonel):
-        page  : int (default: 1)
-        limit : int (default: 20, max: 100)
-
-    Responses:
-        200 → Onaylı grupların listesi (pagination ile)
+    Kullanıcının üyesi olduğu (onaylı veya bekleyen) grupları listeler.
+    
+    Query Params:
+        limit   : int (opsiyonel)
+        sort_by : str ('activity' ise son harcama tarihine göre sıralar)
     """
-    joined_only = request.args.get("joined") == "true"
-    # Basit pagination
-    try:
-        page = max(1, int(request.args.get("page", 1)))
-        limit = min(100, max(1, int(request.args.get("limit", 20))))
-    except (ValueError, TypeError):
-        page, limit = 1, 20
-
-    offset = (page - 1) * limit
     user_id: int = int(request.ctx.user["sub"])
-    query = request.args.get("q", "").strip()
+    limit_val = request.args.get("limit")
+    sort_by = request.args.get("sort_by")
 
     async with get_session() as session:
-        from sqlalchemy import func
-        # Toplam sayıyı al
-        count_stmt = select(func.count(Group.id)).where(Group.is_approved.is_(True))
-        if query:
-            count_stmt = count_stmt.where(Group.name.ilike(f"%{query}%"))
-        total_count = await session.scalar(count_stmt) or 0
-
-        # Join with GroupMember to see if the current user is a member
+        # Sadece kullanıcının üye olduğu grupları getir
         stmt = (
             select(Group, GroupMember)
-            .outerjoin(
+            .join(
                 GroupMember,
                 (GroupMember.group_id == Group.id) & (GroupMember.user_id == user_id)
             )
-            .where(Group.is_approved.is_(True))
+            .order_by(Group.created_at.desc())
         )
         
-        if query:
-            stmt = stmt.where(Group.name.ilike(f"%{query}%"))
-            
-        if joined_only:
-            stmt = stmt.where(GroupMember.id.isnot(None))
-            
-        # Öncelik: Üyesi olduğu gruplar en üstte, sonra en yeni gruplar
-        stmt = stmt.order_by(
-            GroupMember.id.isnot(None).desc(),
-            Group.created_at.desc()
-        ).offset(offset).limit(limit)
         result = await session.execute(stmt)
+        rows = result.all()
         
         data_list = []
-        for group, membership in result:
+        for group, membership in rows:
             g_dict = _build_group_response(group)
-            if membership:
-                g_dict["role"] = membership.role.value
-                # Membership status overrides group approval status in this context for the UI
-                g_dict["is_approved"] = membership.is_approved
+            g_dict["role"] = membership.role.value
+            g_dict["is_approved"] = membership.is_approved
+            g_dict["nickname"] = membership.nickname
             data_list.append(g_dict)
 
         return sanic_json(
             {
-                "page": page,
-                "limit": limit,
-                "total_count": total_count,
                 "count": len(data_list),
                 "groups": data_list,
             },
@@ -338,6 +382,62 @@ async def list_groups(request: Request) -> HTTPResponse:
 # =============================================================================
 # ENDPOINT 3: POST /api/groups/<group_id>/join — Gruba Katılma İsteği
 # =============================================================================
+
+@groups_bp.post("/join")
+@protected
+async def join_by_code(request: Request) -> HTTPResponse:
+    """
+    Davet kodu (#ID) kullanarak gruba katılma isteği gönderir.
+    """
+    user_id: int = int(request.ctx.user["sub"])
+    body = request.json or {}
+    invite_code = body.get("invite_code", "").strip()
+
+    if not invite_code:
+        raise BadRequest("Davet kodu gereklidir.")
+
+    async with get_session() as session:
+        # Kod ile grubu bul
+        stmt = select(Group).where(Group.invite_code == invite_code, Group.is_approved.is_(True))
+        group = await session.scalar(stmt)
+        if not group:
+            raise NotFound("Geçersiz davet kodu veya grup artık mevcut değil.")
+
+        group_id = group.id
+
+        # Zaten üye mi?
+        existing = await _get_membership(session, group_id, user_id)
+        if existing:
+            if existing.is_approved:
+                raise BadRequest("Bu grubun zaten aktif bir üyesisiniz.")
+            else:
+                raise BadRequest("Bu grup için zaten bekleyen bir katılma isteğiniz var.")
+
+        # Banlı mı?
+        stmt_ban = select(GroupBan).where(GroupBan.group_id == group_id, GroupBan.user_id == user_id)
+        is_banned = await session.scalar(stmt_ban)
+        if is_banned:
+            raise Forbidden("Bu gruptan kalıcı olarak uzaklaştırıldınız (Ban).")
+
+        # Katılma isteği oluştur
+        new_membership = GroupMember(
+            user_id=user_id,
+            group_id=group_id,
+            role=GroupMemberRole.USER,
+            is_approved=False,
+        )
+        session.add(new_membership)
+        
+        logger.info("group.join_by_code", group_id=group_id, user_id=user_id, invite_code=invite_code)
+        
+        return sanic_json(
+            {
+                "message": f"'{group.name}' grubuna katılma isteği gönderildi.",
+                "group_id": group_id
+            },
+            status=201
+        )
+
 
 @groups_bp.post("/<group_id:int>/join")
 @protected
@@ -395,6 +495,34 @@ async def join_group(request: Request, group_id: int) -> HTTPResponse:
         )
 
 
+@groups_bp.post("/<group_id:int>/regenerate-code")
+@protected
+async def regenerate_invite_code(request: Request, group_id: int) -> HTTPResponse:
+    """
+    Grup liderinin davet kodunu yenilemesini sağlar.
+    """
+    user_id: int = int(request.ctx.user["sub"])
+    async with get_session() as session:
+        # Liderlik kontrolü
+        await _get_leader_membership(session, group_id, user_id)
+        
+        group = await session.get(Group, group_id)
+        if not group:
+            raise NotFound("Grup bulunamadı.")
+            
+        new_code = generate_invite_code()
+        group.invite_code = new_code
+        
+        await session.commit()
+        
+        logger.info("group.code_regenerated", group_id=group_id, user_id=user_id, new_code=new_code)
+        
+        return sanic_json({
+            "message": "Davet kodu başarıyla yenilendi.",
+            "invite_code": new_code
+        })
+
+
 # =============================================================================
 # ENDPOINT 4: POST /api/groups/<group_id>/approve/<user_id> — Üye Onaylama
 # =============================================================================
@@ -437,6 +565,12 @@ async def approve_member(
             raise BadRequest("Bu kullanıcı zaten grubun onaylı üyesi.")
 
         target_membership.is_approved = True
+        
+        # Otomatik takma ad kontrolü
+        group = await session.get(Group, group_id)
+        auto_nick = await _get_auto_nickname(session, target_user_id, group.name, exclude_group_id=group_id)
+        if auto_nick:
+            target_membership.nickname = auto_nick
 
         logger.info(
             "group.member_approved",
@@ -1003,3 +1137,41 @@ async def list_banned_users(request: Request, group_id: int) -> HTTPResponse:
             ]
         }, status=200)
 
+
+# =============================================================================
+# ENDPOINT 5: PUT /api/groups/<group_id>/nickname — Takma Ad Belirle
+# =============================================================================
+
+@groups_bp.put("/<group_id:int>/nickname")
+@protected
+async def set_group_nickname(request: Request, group_id: int) -> HTTPResponse:
+    """
+    Kullanıcının gruptaki kendi takma adını güncellemesini veya silmesini sağlar.
+    """
+    user_id: int = int(request.ctx.user["sub"])
+    body = request.json or {}
+    
+    try:
+        data = SetNicknameRequest.model_validate(body)
+    except ValidationError as exc:
+        raise BadRequest(f"Validasyon hatası: {exc.errors()}")
+
+    async with get_session() as session:
+        membership = await _get_membership(session, group_id, user_id)
+        if not membership:
+            raise NotFound("Bu gruba üye değilsiniz.")
+
+        membership.nickname = data.nickname
+        await session.commit()
+        
+        logger.info(
+            "group.nickname_updated", 
+            group_id=group_id, 
+            user_id=user_id, 
+            nickname=data.nickname
+        )
+        
+        return sanic_json({
+            "message": "Takma ad güncellendi." if data.nickname else "Takma ad silindi.",
+            "nickname": data.nickname
+        })

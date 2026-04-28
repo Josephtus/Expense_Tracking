@@ -1,38 +1,47 @@
 import React, { useEffect, useState } from 'react';
+import { motion } from 'framer-motion';
 import { apiFetch } from '../utils/api';
 import { LayoutGrid, CreditCard, ArrowUpRight, ArrowDownLeft, Users, ChevronRight } from 'lucide-react';
+import { useAuthStore } from '../store/authStore';
 
 interface HomeProps {
-  user: any;
-  onSelectGroup: (id: number, name: string, role: string, isApproved: boolean) => void;
+  onSelectGroup: (id: number, name: string, role: string, isApproved: boolean, nickname?: string | null) => void;
 }
 
-export const Home: React.FC<HomeProps> = ({ user, onSelectGroup }) => {
+export const Home: React.FC<HomeProps> = ({ onSelectGroup }) => {
+  const { user } = useAuthStore();
   const [myGroups, setMyGroups] = useState<any[]>([]);
   const [debts, setDebts] = useState<any>({});
   const [loading, setLoading] = useState(true);
 
+  const [summaryData, setSummaryData] = useState<any>({ total_spending: 0, summary: [] });
+  const [activeIndex, setActiveIndex] = useState<number | null>(null);
+
   const fetchData = async () => {
+    if (!user) return;
     setLoading(true);
     try {
-      // 1. Üye olunan grupları getir
-      const groupsRes = await apiFetch('/groups?joined=true&limit=5');
+      const [groupsRes, summaryRes] = await Promise.all([
+        apiFetch('/groups?sort_by=activity'),
+        apiFetch('/expenses/summary/me')
+      ]);
+      
       const groupsData = await groupsRes.json();
-      const joinedGroups = groupsData.groups || [];
-      setMyGroups(joinedGroups);
+      const sumData = await summaryRes.json();
+      
+      const allGroups = groupsData.groups || [];
+      setMyGroups(allGroups);
+      setSummaryData(sumData || { total_spending: 0, summary: [] });
 
-      // 2. Her grup için borç durumunu çek (Özet için)
       const debtData: any = {};
-      for (const group of joinedGroups) {
+      for (const group of allGroups) {
         try {
           const res = await apiFetch(`/expenses/${group.id}/debts`);
           if (res.status === 403) {
-            // Kullanıcı henüz onaylanmamış olabilir, bu grubu borç özetinden atla
             debtData[group.id] = 0;
             continue;
           }
           const d = await res.json();
-          // Kullanıcının bu gruptaki net durumunu hesapla
           let netBalance = 0;
           if (d.transactions) {
             d.transactions.forEach((tx: any) => {
@@ -50,6 +59,8 @@ export const Home: React.FC<HomeProps> = ({ user, onSelectGroup }) => {
       setDebts(debtData);
     } catch (err) {
       console.error("Home veri çekme hatası:", err);
+      setMyGroups([]);
+      setSummaryData({ total_spending: 0, summary: [] });
     } finally {
       setLoading(false);
     }
@@ -57,9 +68,9 @@ export const Home: React.FC<HomeProps> = ({ user, onSelectGroup }) => {
 
   useEffect(() => {
     fetchData();
-  }, [user.id]);
+  }, [user?.id]);
 
-  if (loading) {
+  if (loading || !user) {
     return (
       <div className="flex flex-col items-center justify-center py-20 space-y-4">
         <div className="w-12 h-12 border-4 border-[#00f0ff]/20 border-t-[#00f0ff] rounded-full animate-spin" />
@@ -69,36 +80,42 @@ export const Home: React.FC<HomeProps> = ({ user, onSelectGroup }) => {
   }
 
   const totalBalance = Object.values(debts).reduce((acc: number, val: any) => acc + val, 0) as number;
+  const CATEGORY_COLORS = ['#6366f1', '#f59e0b', '#ef4444', '#0ea5e9', '#8b5cf6', '#ec4899', '#10b981', '#f43f5e'];
+  const DEFAULT_ICONS: Record<string, string> = {
+    'Konaklama': '🛌', 'Eğlence': '🎤', 'Market Alışverişi': '🛒', 'Sağlık': '🦷',
+    'Sigorta': '🧯', 'Kira ve Masraflar': '🏠', 'Restoranlar ve Barlar': '🍔',
+    'Shopping': '🛍️', 'Transport': '🚕', 'Fatura': '🧾', 'Balık': '🐟',
+    'Yufkacı': '🥟', 'Kasap': '🥩', 'İçme suyu': '💧', 'Halı Yıkama': '🧼', 'Diğer': '🖐️'
+  };
 
   return (
     <div className="space-y-10 animate-fade-in">
-      {/* Üst Karşılama ve Özet Paneli */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <div className="lg:col-span-2 bg-slate-900/40 backdrop-blur-3xl border border-white/10 rounded-[32px] p-8 md:p-10 relative overflow-hidden shadow-2xl">
-          <div className="absolute top-0 right-0 p-8 opacity-10 pointer-events-none">
-            <LayoutGrid size={120} className="text-[#00f0ff]" />
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+        <div className="lg:col-span-7 bg-slate-900/40 backdrop-blur-3xl border border-white/10 rounded-[40px] p-8 md:p-12 relative overflow-hidden shadow-2xl flex flex-col justify-center min-h-[340px]">
+          <div className="absolute top-0 right-0 p-12 opacity-5 pointer-events-none">
+            <LayoutGrid size={160} className="text-[#00f0ff]" />
           </div>
           <div className="relative z-10">
-            <h2 className="text-4xl font-black text-white mb-2 tracking-tighter">Merhaba, {user.name}! 👋</h2>
-            <p className="text-slate-400 text-sm max-w-md">Octoqus finansal asistanına hoş geldin. Bugün harcamalarını kontrol etmek için harika bir gün.</p>
+            <h2 className="text-5xl font-black text-white mb-4 tracking-tighter leading-tight">Merhaba, <br/>{user.name}! 👋</h2>
+            <p className="text-slate-400 text-lg max-w-sm font-medium leading-relaxed">Octoqus finansal asistanına hoş geldin. Bugün harcamalarını kontrol etmek için harika bir gün.</p>
             
-            <div className="flex flex-wrap gap-4 mt-8">
-              <div className="px-6 py-4 rounded-2xl bg-white/5 border border-white/10 flex items-center gap-4">
-                <div className="w-10 h-10 rounded-xl bg-[#00f0ff]/20 flex items-center justify-center text-[#00f0ff]">
-                  <Users size={20} />
+            <div className="flex flex-wrap gap-6 mt-10">
+              <div className="px-8 py-5 rounded-[24px] bg-white/5 border border-white/10 flex items-center gap-5 shadow-inner">
+                <div className="w-12 h-12 rounded-2xl bg-[#00f0ff]/20 flex items-center justify-center text-[#00f0ff]">
+                  <Users size={24} />
                 </div>
                 <div>
-                  <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest leading-none mb-1">Aktif Gruplar</p>
-                  <p className="text-xl font-black text-white">{myGroups.length}</p>
+                  <p className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em] mb-1">Aktif Gruplar</p>
+                  <p className="text-2xl font-black text-white">{myGroups.length}</p>
                 </div>
               </div>
-              <div className="px-6 py-4 rounded-2xl bg-white/5 border border-white/10 flex items-center gap-4">
-                <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${totalBalance >= 0 ? 'bg-emerald-500/20 text-emerald-500' : 'bg-red-500/20 text-red-500'}`}>
-                  {totalBalance >= 0 ? <ArrowUpRight size={20} /> : <ArrowDownLeft size={20} />}
+              <div className="px-8 py-5 rounded-[24px] bg-white/5 border border-white/10 flex items-center gap-5 shadow-inner">
+                <div className={`w-12 h-12 rounded-2xl flex items-center justify-center ${totalBalance >= 0 ? 'bg-emerald-500/20 text-emerald-500' : 'bg-red-500/20 text-red-500'}`}>
+                  {totalBalance >= 0 ? <ArrowUpRight size={24} /> : <ArrowDownLeft size={24} />}
                 </div>
                 <div>
-                  <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest leading-none mb-1">Genel Durum</p>
-                  <p className={`text-xl font-black ${totalBalance >= 0 ? 'text-emerald-500' : 'text-red-500'}`}>
+                  <p className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em] mb-1">Genel Durum</p>
+                  <p className={`text-2xl font-black ${totalBalance >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
                     {totalBalance >= 0 ? '+' : ''}{totalBalance.toLocaleString('tr-TR', { minimumFractionDigits: 2 })} ₺
                   </p>
                 </div>
@@ -107,77 +124,167 @@ export const Home: React.FC<HomeProps> = ({ user, onSelectGroup }) => {
           </div>
         </div>
 
-        {/* Küçük Durum Kartı */}
-        <div className="bg-gradient-to-br from-[#00f0ff] to-[#b026ff] rounded-[32px] p-8 text-slate-950 shadow-2xl relative overflow-hidden group">
-          <div className="absolute top-0 right-0 -mr-8 -mt-8 w-32 h-32 bg-white/20 rounded-full blur-2xl group-hover:scale-150 transition-transform duration-700" />
-          <div className="relative z-10 h-full flex flex-col justify-between">
-            <div>
-              <CreditCard size={32} className="mb-4" />
-              <p className="text-sm font-bold uppercase tracking-widest opacity-70">Hızlı Özet</p>
-              <h3 className="text-2xl font-black leading-tight">Finansal Sağlığın Güvende.</h3>
-            </div>
-            <button className="mt-8 py-3 bg-slate-950 text-white rounded-xl font-black text-xs uppercase tracking-widest hover:bg-slate-900 transition-colors">
-              Raporları İncele
-            </button>
+        {/* HARCAMA ÖZETİ PIECHART KARTI */}
+        <div className="lg:col-span-5 bg-slate-900/40 backdrop-blur-3xl border border-white/10 rounded-[40px] p-8 md:p-10 shadow-2xl relative overflow-hidden group min-h-[340px] flex flex-col">
+          <div className="relative z-10 flex flex-col h-full">
+             <div className="flex items-center justify-between mb-8">
+                <div>
+                  <p className="text-[10px] font-black text-slate-500 uppercase tracking-[0.3em] mb-1">HIZLI ÖZET</p>
+                  <h3 className="text-2xl font-black text-white tracking-tighter uppercase">Genel Harcamaların</h3>
+                </div>
+                <div className="w-12 h-12 rounded-2xl bg-white/5 border border-white/10 flex items-center justify-center shadow-inner">
+                   <CreditCard size={24} className="text-[#00f0ff]" />
+                </div>
+             </div>
+
+             <div className="flex flex-col sm:flex-row items-center gap-10 flex-1">
+               <div className="relative w-40 h-40 flex-shrink-0">
+                  {summaryData?.total_spending > 0 ? (
+                    <svg className="w-full h-full rotate-[-90deg] overflow-visible" viewBox="-18 -18 36 36">
+                       {summaryData.summary.map((c: any, i: number) => {
+                          const percentage = (c.total / summaryData.total_spending);
+                          let startAngleSum = 0;
+                          for(let j=0; j<i; j++) startAngleSum += (summaryData.summary[j].total / summaryData.total_spending) * 2 * Math.PI;
+                          
+                          const startAngle = startAngleSum;
+                          const endAngle = startAngleSum + (percentage * 2 * Math.PI);
+                          const midAngle = startAngleSum + (percentage * Math.PI);
+                          
+                          const x1 = Math.cos(startAngle) * 16;
+                          const y1 = Math.sin(startAngle) * 16;
+                          const x2 = Math.cos(endAngle) * 16;
+                          const y2 = Math.sin(endAngle) * 16;
+                          
+                          const largeArcFlag = percentage > 0.5 ? 1 : 0;
+                          const d = `M 0 0 L ${x1} ${y1} A 16 16 0 ${largeArcFlag} 1 ${x2} ${y2} Z`;
+                          const explodeX = activeIndex === i ? Math.cos(midAngle) * 1 : 0;
+                          const explodeY = activeIndex === i ? Math.sin(midAngle) * 1 : 0;
+                          const color = CATEGORY_COLORS[i % CATEGORY_COLORS.length];
+
+                          return (
+                            <motion.path 
+                              key={i} 
+                              d={d}
+                              fill={color}
+                              stroke="#0f172a"
+                              strokeWidth={0.8}
+                              strokeLinejoin="round"
+                              style={{ paintOrder: 'stroke fill' }}
+                              animate={{ 
+                                opacity: activeIndex === null || activeIndex === i ? 1 : 0.25,
+                                scale: activeIndex === i ? 1.05 : 1,
+                                x: explodeX,
+                                y: explodeY,
+                                filter: activeIndex === i ? `drop-shadow(0 0 12px ${color}88)` : 'none'
+                              }}
+                              transition={{ duration: 0.5, ease: [0.23, 1, 0.32, 1] }}
+                              onMouseEnter={() => setActiveIndex(i)}
+                              onMouseLeave={() => setActiveIndex(null)}
+                            />
+                          );
+                       })}
+                    </svg>
+                  ) : (
+                    <div className="w-full h-full rounded-full border-2 border-dashed border-white/10 flex items-center justify-center text-[10px] text-slate-600 font-black text-center p-4 uppercase tracking-widest leading-relaxed">Harcama Bulunmuyor</div>
+                  )}
+               </div>
+               
+               <div className="flex-1 w-full flex flex-col">
+                  <div className="mb-4">
+                    <p className="text-[10px] font-black text-slate-500 uppercase tracking-[0.3em] mb-1">TOPLAM TUTAR</p>
+                    <p className="text-3xl font-black text-white tracking-tighter">₺{summaryData?.total_spending.toLocaleString('tr-TR')}</p>
+                  </div>
+                  
+                  <div className="flex-1 max-h-[160px] overflow-y-auto pr-2 custom-scrollbar space-y-2">
+                    {summaryData?.summary.map((c: any, i: number) => (
+                       <motion.div 
+                        key={i} 
+                        initial={{ opacity: 0, x: 10 }}
+                        animate={{ opacity: 1, x: 0 }}
+                        transition={{ delay: i * 0.05 }}
+                        onMouseEnter={() => setActiveIndex(i)}
+                        onMouseLeave={() => setActiveIndex(null)}
+                        className={`flex items-center justify-between p-2.5 rounded-2xl transition-all cursor-pointer ${activeIndex === i ? 'bg-white/10 scale-[1.02]' : 'hover:bg-white/5'}`}
+                       >
+                          <div className="flex items-center gap-3">
+                            <div className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: CATEGORY_COLORS[i % CATEGORY_COLORS.length] }} />
+                            <span className="text-lg shrink-0">{DEFAULT_ICONS[c.category] || '📦'}</span>
+                            <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest truncate max-w-[80px]">{c.category}</span>
+                          </div>
+                          <div className="text-right">
+                            <p className="text-[11px] font-black text-white leading-none">₺{c.total.toLocaleString('tr-TR')}</p>
+                            <p className="text-[8px] font-black text-slate-600 uppercase mt-0.5">%{((c.total / summaryData.total_spending) * 100).toFixed(0)}</p>
+                          </div>
+                       </motion.div>
+                    ))}
+                  </div>
+               </div>
+             </div>
           </div>
         </div>
       </div>
 
-      {/* Gruplarım Listesi */}
-      <div className="space-y-6">
+      <div className="space-y-8">
         <div className="flex justify-between items-end px-2">
           <div>
-            <h3 className="text-2xl font-black text-white tracking-tight">Üyesi Olduğun Gruplar</h3>
-            <p className="text-slate-500 text-xs font-bold uppercase tracking-widest mt-1">Son Etkinliklere Göre</p>
+            <h3 className="text-3xl font-black text-white tracking-tight">Son Kullanılan Gruplar</h3>
+            <p className="text-slate-500 text-[10px] font-black uppercase tracking-[0.3em] mt-2">Harcama Aktivitesine Göre</p>
           </div>
-          <button className="text-[10px] font-black text-[#00f0ff] uppercase tracking-widest hover:underline">Tümünü Gör</button>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
           {myGroups.length > 0 ? (
-            myGroups.map((group) => {
+            myGroups.slice(0, 3).map((group) => {
               const balance = debts[group.id] || 0;
               return (
                 <motion.div 
                   key={group.id}
-                  whileHover={{ y: -5 }}
-                  onClick={() => onSelectGroup(group.id, group.name, group.role, group.is_approved)}
-                  className="group bg-slate-900/60 border border-white/5 rounded-3xl p-6 hover:border-[#00f0ff]/30 transition-all cursor-pointer shadow-xl relative overflow-hidden"
+                  whileHover={{ y: -8, scale: 1.01 }}
+                  onClick={() => onSelectGroup(group.id, group.name, group.role, group.is_approved, group.nickname)}
+                  className="group bg-slate-900/60 backdrop-blur-md border border-white/5 rounded-[40px] p-8 hover:border-[#00f0ff]/30 transition-all cursor-pointer shadow-2xl relative overflow-hidden"
                 >
-                  <div className="flex justify-between items-start mb-6">
-                    <div className="w-12 h-12 rounded-2xl bg-slate-800 flex items-center justify-center text-xl shadow-inner">
+                  <div className="flex justify-between items-start mb-8">
+                    <div className="w-14 h-14 rounded-2xl bg-slate-800 flex items-center justify-center text-2xl shadow-inner border border-white/5 group-hover:scale-110 transition-transform">
                       🏢
                     </div>
-                    <div className={`px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-widest ${group.role === 'GROUP_LEADER' ? 'bg-amber-500/10 text-amber-500 border border-amber-500/20' : 'bg-[#00f0ff]/10 text-[#00f0ff] border border-[#00f0ff]/20'}`}>
-                      {group.role === 'GROUP_LEADER' ? 'Lider' : 'Üye'}
+                    <div className={`px-4 py-1.5 rounded-xl text-[9px] font-black uppercase tracking-[0.2em] ${group.role?.toUpperCase() === 'GROUP_LEADER' ? 'bg-amber-500/10 text-amber-500 border border-amber-500/20' : 'bg-[#00f0ff]/10 text-[#00f0ff] border border-[#00f0ff]/20'}`}>
+                      {group.role?.toUpperCase() === 'GROUP_LEADER' ? 'Lider' : 'Üye'}
                     </div>
                   </div>
 
-                  <h4 className="text-lg font-black text-white group-hover:text-[#00f0ff] transition-colors mb-1 truncate">{group.name}</h4>
-                  <p className="text-slate-500 text-xs line-clamp-1 mb-6">{group.content || 'Açıklama belirtilmemiş.'}</p>
+                  <div className="mb-2">
+                    <h4 className="text-xl font-black text-white group-hover:text-[#00f0ff] transition-colors truncate tracking-tight">
+                      {group.name}
+                    </h4>
+                    {group.nickname && (
+                      <span className="inline-block px-3 py-1 rounded-lg bg-white/5 border border-white/10 text-[9px] font-black text-slate-500 uppercase tracking-widest mt-2">
+                        🏷️ {group.nickname}
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-slate-500 text-sm font-medium line-clamp-1 mb-8 leading-relaxed">{group.content || 'Açıklama belirtilmemiş.'}</p>
 
-                  <div className="flex items-center justify-between pt-4 border-t border-white/5">
+                  <div className="flex items-center justify-between pt-6 border-t border-white/5">
                     <div>
-                      <p className="text-[9px] font-black text-slate-500 uppercase tracking-widest mb-1">Durum</p>
-                      <p className={`text-sm font-black ${balance >= 0 ? 'text-emerald-500' : 'text-red-500'}`}>
+                      <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">Cari Durum</p>
+                      <p className={`text-lg font-black tracking-tighter ${balance >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
                         {balance >= 0 ? 'Alacak: ' : 'Borç: '}
                         {Math.abs(balance).toLocaleString('tr-TR', { minimumFractionDigits: 2 })} ₺
                       </p>
                     </div>
-                    <div className="w-8 h-8 rounded-full bg-white/5 flex items-center justify-center text-slate-400 group-hover:bg-[#00f0ff] group-hover:text-slate-950 transition-all">
-                      <ChevronRight size={16} />
+                    <div className="w-10 h-10 rounded-full bg-white/5 flex items-center justify-center text-slate-400 group-hover:bg-[#00f0ff] group-hover:text-slate-950 transition-all shadow-lg">
+                      <ChevronRight size={20} />
                     </div>
                   </div>
                 </motion.div>
               );
             })
           ) : (
-            <div className="col-span-full py-16 bg-slate-900/20 border border-dashed border-slate-800 rounded-[32px] text-center">
-              <div className="w-16 h-16 bg-slate-800/50 rounded-full flex items-center justify-center mx-auto mb-4">
-                <LayoutGrid size={24} className="text-slate-600" />
+            <div className="col-span-full py-24 bg-slate-900/20 border border-dashed border-white/5 rounded-[40px] text-center">
+              <div className="w-20 h-20 bg-slate-800/50 rounded-full flex items-center justify-center mx-auto mb-6 shadow-inner">
+                <LayoutGrid size={32} className="text-slate-600" />
               </div>
-              <p className="text-slate-400 font-bold text-sm">Henüz bir gruba üye değilsiniz.</p>
-              <button className="mt-4 text-[#00f0ff] text-xs font-black uppercase tracking-widest hover:underline">Grup Keşfet</button>
+              <p className="text-slate-400 font-black uppercase text-xs tracking-[0.3em]">Henüz bir gruba üye değilsiniz.</p>
             </div>
           )}
         </div>
@@ -185,6 +292,3 @@ export const Home: React.FC<HomeProps> = ({ user, onSelectGroup }) => {
     </div>
   );
 };
-
-// motion importu eksik kalmasın
-import { motion } from 'framer-motion';

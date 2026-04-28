@@ -129,36 +129,32 @@ def _build_private_profile(user: User) -> dict:
 
 
 
+from src.services.image import optimize_image
+
 async def _save_avatar(file_body: bytes, original_filename: str) -> str:
     """
-    Avatar dosyasını UUID adıyla diske kaydeder.
-
-    Args:
-        file_body        : Yüklenen dosyanın binary içeriği
-        original_filename: Orijinal dosya adı (uzantı tespiti için)
-
-    Returns:
-        Veritabanına kaydedilecek URL yolu: /uploads/avatars/<uuid>.<ext>
+    Avatar dosyasını optimize eder ve WebP formatında kaydet.
     """
-    # Orijinal uzantıyı al (küçük harfe çevir)
-    suffix = Path(original_filename).suffix.lower()
-    if suffix not in EXTENSION_TO_MIME:
-        suffix = ".jpg"  # Uzantı yoksa veya tanımsızsa varsayılan
-
-    # Benzersiz dosya adı: <uuid4_hex>.<uzantı>
+    # Görseli optimize et (WebP formatına dönüştürür)
+    optimized_body = optimize_image(file_body)
+    
+    # Uzantıyı .webp olarak sabitle (çünkü optimize_image her zaman webp döner)
+    suffix = ".webp"
     unique_name = f"{uuid4().hex}{suffix}"
     file_path = AVATAR_UPLOAD_DIR / unique_name
 
-    # Dizinin varlığını garantile (race condition'a karşı)
     AVATAR_UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 
-    # Async yazma — event loop'u bloklama
     async with aiofiles.open(file_path, "wb") as f:
-        await f.write(file_body)
+        await f.write(optimized_body)
 
-    logger.info("avatar.saved", path=str(file_path), size_bytes=len(file_body))
+    logger.info(
+        "avatar.saved", 
+        path=str(file_path), 
+        original_size=len(file_body),
+        saved_size=len(optimized_body)
+    )
 
-    # Dışarıdan erişilebilir URL yolu (Sanic static route ile sunulur)
     return f"/uploads/avatars/{unique_name}"
 
 
@@ -449,7 +445,7 @@ async def delete_avatar(request: Request) -> HTTPResponse:
             if file_path.exists() and file_path.is_file():
                 file_path.unlink()
                 logger.info("avatar.hard_deleted", user_id=user_id, path=str(file_path))
-        except Exception as exc:
+        except (OSError, FileNotFoundError) as exc:
             logger.error("avatar.hard_delete_failed", user_id=user_id, error=str(exc))
             # Dosya silinemese bile DB'yi temizle (veya kullanıcıya hata dön)
             # Burada kritik bir hata olmadığı sürece devam edelim.

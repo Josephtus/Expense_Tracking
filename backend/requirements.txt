@@ -39,6 +39,10 @@ python-multipart==0.0.9         # Multipart form / file upload desteği
 httpx==0.27.0                   # Async HTTP client (dış servis istekleri)
 aiosmtplib==3.0.1               # Async SMTP client (Şifre sıfırlama vb.)
 email-validator==2.1.1          # Pydantic EmailStr desteği için
+Pillow==10.3.0                  # Image processing and optimization
+pandas==2.2.2                   # Data analysis and Excel export support
+xlsxwriter==3.2.0               # Excel file generation
+fpdf2==2.7.9                    # PDF generation
 
 # --- Logging ---
 structlog==24.1.0               # Yapılandırılmış loglama (JSON output)

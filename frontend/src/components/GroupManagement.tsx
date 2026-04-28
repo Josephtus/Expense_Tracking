@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { apiFetch } from '../utils/api';
+import { useGroupStore } from '../store/groupStore';
 
 interface Member {
   user_id: number;
@@ -21,21 +22,21 @@ interface BannedUser {
 interface GroupInfo {
   name: string;
   content: string;
+  invite_code: string;
 }
 
-interface GroupManagementProps {
-  groupId: number;
-  onUpdate: () => void;
-}
+export const GroupManagement: React.FC = () => {
+  const { activeGroup, triggerRefresh } = useGroupStore();
+  const groupId = activeGroup?.id;
 
-export const GroupManagement: React.FC<GroupManagementProps> = ({ groupId, onUpdate }) => {
   const [members, setMembers] = useState<Member[]>([]);
   const [bannedUsers, setBannedUsers] = useState<BannedUser[]>([]);
   const [loading, setLoading] = useState(true);
-  const [groupInfo, setGroupInfo] = useState<GroupInfo>({ name: '', content: '' });
+  const [groupInfo, setGroupInfo] = useState<GroupInfo>({ name: '', content: '', invite_code: '' });
   const [updateLoading, setUpdateLoading] = useState(false);
 
   const fetchMembers = async () => {
+    if (!groupId) return;
     try {
       const res = await apiFetch(`/groups/${groupId}/members`);
       const data = await res.json();
@@ -46,16 +47,22 @@ export const GroupManagement: React.FC<GroupManagementProps> = ({ groupId, onUpd
   };
 
   const fetchGroupInfo = async () => {
+    if (!groupId) return;
     try {
       const res = await apiFetch(`/groups/${groupId}`);
       const data = await res.json();
-      setGroupInfo({ name: data.name, content: data.content || '' });
+      setGroupInfo({ 
+        name: data.group.name, 
+        content: data.group.content || '', 
+        invite_code: data.group.invite_code 
+      });
     } catch (err) {
       console.error("Grup bilgileri yüklenemedi", err);
     }
   };
 
   const fetchBans = async () => {
+    if (!groupId) return;
     try {
       const res = await apiFetch(`/groups/${groupId}/bans`);
       const data = await res.json();
@@ -66,21 +73,24 @@ export const GroupManagement: React.FC<GroupManagementProps> = ({ groupId, onUpd
   };
 
   useEffect(() => {
+    if (!groupId) return;
     setLoading(true);
     Promise.all([fetchMembers(), fetchGroupInfo(), fetchBans()]).finally(() => setLoading(false));
   }, [groupId]);
 
   const handleApprove = async (userId: number) => {
+    if (!groupId) return;
     try {
       await apiFetch(`/groups/${groupId}/approve/${userId}`, { method: 'POST' });
       fetchMembers();
-      onUpdate();
+      triggerRefresh();
     } catch (err) {
       alert("Onaylama başarısız");
     }
   };
 
   const handleReject = async (userId: number) => {
+    if (!groupId) return;
     if (!window.confirm("Bu isteği reddetmek istediğinize emin misiniz?")) return;
     try {
       await apiFetch(`/groups/${groupId}/requests/${userId}`, { method: 'DELETE' });
@@ -91,32 +101,35 @@ export const GroupManagement: React.FC<GroupManagementProps> = ({ groupId, onUpd
   };
 
   const handleKick = async (userId: number) => {
+    if (!groupId) return;
     if (!window.confirm("Bu üyeyi gruptan atmak istediğinize emin misiniz?")) return;
     try {
       await apiFetch(`/groups/${groupId}/members/${userId}`, { method: 'DELETE' });
       fetchMembers();
-      onUpdate();
+      triggerRefresh();
     } catch (err) {
       alert("İşlem başarısız");
     }
   };
 
   const handleBan = async (userId: number) => {
+    if (!groupId) return;
     if (!window.confirm("Bu üyeyi banlamak istediğinize emin misiniz? Bir daha katılamayacaktır.")) return;
     try {
       await apiFetch(`/groups/${groupId}/ban/${userId}`, { method: 'POST' });
       fetchMembers();
-      onUpdate();
+      triggerRefresh();
     } catch (err) {
       alert("Banlama başarısız");
     }
   };
 
   const handleTransfer = async (userId: number) => {
+    if (!groupId) return;
     if (!window.confirm("Liderliği bu üyeye devretmek istediğinize emin misiniz? Bu işlemden sonra yönetici yetkinizi kaybedeceksiniz.")) return;
     try {
       await apiFetch(`/groups/${groupId}/transfer_leadership/${userId}`, { method: 'POST' });
-      onUpdate();
+      triggerRefresh();
       window.location.reload(); 
     } catch (err) {
       alert("Devir başarısız");
@@ -124,6 +137,7 @@ export const GroupManagement: React.FC<GroupManagementProps> = ({ groupId, onUpd
   };
 
   const handleUnban = async (userId: number) => {
+    if (!groupId) return;
     try {
       await apiFetch(`/groups/${groupId}/ban/${userId}`, { method: 'DELETE' });
       fetchBans();
@@ -132,7 +146,31 @@ export const GroupManagement: React.FC<GroupManagementProps> = ({ groupId, onUpd
     }
   };
 
+  const handleCopyCode = () => {
+    navigator.clipboard.writeText(groupInfo.invite_code);
+    alert("Davet kodu kopyalandı!");
+  };
+
+  const handleRegenerateCode = async () => {
+    if (!groupId) return;
+    if (!window.confirm("Davet kodunu yenilemek istediğinize emin misiniz? Eski kod artık çalışmayacaktır.")) return;
+    
+    try {
+      const res = await apiFetch(`/groups/${groupId}/regenerate-code`, { method: 'POST' });
+      const data = await res.json();
+      if (res.ok) {
+        setGroupInfo({ ...groupInfo, invite_code: data.invite_code });
+        alert("Davet kodu yenilendi!");
+      } else {
+        alert(data.message || "İşlem başarısız.");
+      }
+    } catch (err) {
+      alert("Bir hata oluştu.");
+    }
+  };
+
   const handleUpdateGroup = async (e: React.FormEvent) => {
+    if (!groupId) return;
     e.preventDefault();
     setUpdateLoading(true);
     try {
@@ -141,13 +179,15 @@ export const GroupManagement: React.FC<GroupManagementProps> = ({ groupId, onUpd
         body: JSON.stringify(groupInfo)
       });
       alert("Grup bilgileri güncellendi");
-      onUpdate();
+      triggerRefresh();
     } catch (err) {
       alert("Güncelleme başarısız");
     } finally {
       setUpdateLoading(false);
     }
   };
+
+  if (!groupId) return null;
 
   if (loading) return <div className="text-[#00f0ff] animate-pulse p-10 text-center">Yükleniyor...</div>;
 
@@ -156,7 +196,37 @@ export const GroupManagement: React.FC<GroupManagementProps> = ({ groupId, onUpd
 
   return (
     <div className="max-w-5xl mx-auto space-y-10 pb-20 animate-fade-in">
-      {/* Grup Bilgileri Güncelleme */}
+      <section className="bg-slate-900 p-8 rounded-3xl border border-slate-800 shadow-xl relative overflow-hidden">
+        <div className="absolute top-0 right-0 w-32 h-32 bg-[#00f0ff]/5 blur-2xl rounded-full pointer-events-none" />
+        <h3 className="text-xl font-bold text-slate-100 mb-6 flex items-center gap-2">
+          <span className="w-2 h-8 bg-[#00f0ff] rounded-full"></span>
+          Grup Davet Kodu
+        </h3>
+        <div className="flex flex-col sm:flex-row items-center gap-4 bg-slate-950 p-6 rounded-2xl border border-slate-800">
+          <div className="flex-1">
+            <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">Aktif Davet Kodu</p>
+            <p className="text-2xl font-mono font-black text-[#00f0ff] tracking-widest">{groupInfo.invite_code}</p>
+          </div>
+          <div className="flex gap-2 w-full sm:w-auto">
+            <button 
+              onClick={handleCopyCode}
+              className="flex-1 sm:flex-none px-6 py-3 bg-[#00f0ff]/10 border border-[#00f0ff]/20 text-[#00f0ff] rounded-xl text-xs font-black uppercase tracking-widest hover:bg-[#00f0ff]/20 transition-all active:scale-95"
+            >
+              KODU KOPYALA
+            </button>
+            <button 
+              onClick={handleRegenerateCode}
+              className="flex-1 sm:flex-none px-6 py-3 bg-white/5 border border-white/10 text-white rounded-xl text-xs font-black uppercase tracking-widest hover:bg-white/10 transition-all active:scale-95"
+            >
+              YENİ KOD ÜRET
+            </button>
+          </div>
+        </div>
+        <p className="text-[10px] text-slate-500 mt-4 italic">
+          * Bu kodu gruptan birileriyle paylaşarak katılmalarını sağlayabilirsiniz. Yeni kod ürettiğinizde eski kod geçersiz kalır.
+        </p>
+      </section>
+
       <section className="bg-slate-900 p-8 rounded-3xl border border-slate-800 shadow-xl">
         <h3 className="text-xl font-bold text-slate-100 mb-6 flex items-center gap-2">
           <span className="w-2 h-8 bg-[#b026ff] rounded-full"></span>
@@ -192,7 +262,6 @@ export const GroupManagement: React.FC<GroupManagementProps> = ({ groupId, onUpd
         </form>
       </section>
 
-      {/* Bekleyen İstekler */}
       <section className="bg-slate-900 p-8 rounded-3xl border border-slate-800 shadow-xl">
         <h3 className="text-xl font-bold text-slate-100 mb-6 flex items-center gap-2">
           <span className="w-2 h-8 bg-orange-500 rounded-full"></span>
@@ -215,7 +284,6 @@ export const GroupManagement: React.FC<GroupManagementProps> = ({ groupId, onUpd
         </div>
       </section>
 
-      {/* Üyeler */}
       <section className="bg-slate-900 p-8 rounded-3xl border border-slate-800 shadow-xl">
         <h3 className="text-xl font-bold text-slate-100 mb-6 flex items-center gap-2">
           <span className="w-2 h-8 bg-[#00f0ff] rounded-full"></span>
@@ -258,7 +326,6 @@ export const GroupManagement: React.FC<GroupManagementProps> = ({ groupId, onUpd
         </div>
       </section>
 
-      {/* Banlı Kullanıcılar */}
       <section className="bg-slate-900 p-8 rounded-3xl border border-slate-800 shadow-xl">
         <h3 className="text-xl font-bold text-slate-100 mb-6 flex items-center gap-2">
           <span className="w-2 h-8 bg-red-600 rounded-full"></span>
