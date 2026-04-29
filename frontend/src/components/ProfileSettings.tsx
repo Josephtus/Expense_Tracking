@@ -4,7 +4,7 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { apiFetch, getImageUrl } from '../utils/api';
 import { profileSchema, type ProfileFormData, resetPasswordSchema, type ResetPasswordFormData } from '../utils/validations';
-import { User, Camera, Save, BadgeCheck, Trash2, Key, CheckCircle2, AlertCircle, Users, ChevronRight, Settings } from 'lucide-react';
+import { User, Camera, Save, BadgeCheck, Trash2, Key, CheckCircle2, AlertCircle, Users, ChevronRight, Settings, X, Mail } from 'lucide-react';
 import { Pagination } from './common/Pagination';
 
 interface ProfileSettingsProps {
@@ -553,11 +553,11 @@ export const ProfileSettings: React.FC<ProfileSettingsProps> = ({ onUpdate }) =>
               exit={{ opacity: 0, scale: 0.9, y: 20 }}
               className="relative w-full max-w-lg bg-slate-900 border border-white/10 rounded-[40px] shadow-2xl overflow-hidden p-10 pt-16"
             >
-               <button 
+              <button 
                 onClick={() => setSelectedProfile(null)}
                 className="absolute top-6 right-6 p-2 bg-white/5 hover:bg-white/10 rounded-xl transition-all text-slate-400 hover:text-white z-10"
               >
-                <Trash2 size={20} className="rotate-45" />
+                <X size={20} />
               </button>
 
               <div className="flex flex-col items-center text-center">
@@ -568,16 +568,14 @@ export const ProfileSettings: React.FC<ProfileSettingsProps> = ({ onUpdate }) =>
                     <div className="w-full h-full flex items-center justify-center text-4xl">👤</div>
                   )}
                 </div>
-                <h3 className="text-3xl font-black text-white tracking-tighter mb-2">
+                <h3 className="text-3xl font-black text-white tracking-tighter mb-6">
                   {selectedProfile.name} {selectedProfile.surname}
                 </h3>
-                <p className="text-slate-400 text-xs font-bold uppercase tracking-widest mb-10">{selectedProfile.mail}</p>
-                <button 
-                  onClick={() => setSelectedProfile(null)}
-                  className="w-full py-5 bg-white text-slate-950 rounded-2xl font-black text-xs uppercase tracking-widest hover:bg-[#00f0ff] transition-all"
-                >
-                  Kapat
-                </button>
+                
+                <div className="bg-white/5 border border-white/10 px-6 py-3 rounded-full flex items-center gap-3">
+                  <Mail size={16} className="text-[#00f0ff]" />
+                  <span className="text-slate-300 font-black text-[10px] uppercase tracking-[0.1em]">{selectedProfile.mail}</span>
+                </div>
               </div>
             </motion.div>
           </div>

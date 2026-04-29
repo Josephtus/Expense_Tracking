@@ -114,7 +114,7 @@ export const SocialList: React.FC = () => {
         </div>
 
         {/* Results Section */}
-        <div className="p-6 md:p-8 min-h-[300px] flex flex-col relative z-10">
+        <div className="p-6 md:p-8 min-h-[200px] flex flex-col justify-center relative z-10">
         {loading && users.length === 0 ? (
           <div className="flex-1 flex justify-center items-center py-20">
             <div className="w-12 h-12 border-4 border-[#00f0ff]/20 border-t-[#00f0ff] rounded-full animate-spin" />
