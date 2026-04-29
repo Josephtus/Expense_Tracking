@@ -36,6 +36,8 @@ import pandas as pd
 from fpdf import FPDF
 from io import BytesIO
 
+from src.services.image import optimize_image
+
 logger = structlog.get_logger(__name__)
 
 expenses_bp = Blueprint("expenses", url_prefix="/api/expenses")
@@ -710,13 +712,14 @@ async def update_expense(request: Request, group_id: int, expense_id: int) -> HT
         remove_photo = data_dict.get("remove_bill_photo")
         if remove_photo in (True, "true", "1"):
             if expense.bill_photo:
-                # Fiziksel dosyayı silmeyi deneyebiliriz (opsiyonel)
+                # Yerel dosyayı sil (Hard Delete)
                 try:
                     p = Path("." + expense.bill_photo)
                     if p.exists(): p.unlink()
                 except: pass
                 expense.bill_photo = None
                 updated_fields["bill_photo"] = None
+                
 
         # 2. Yeni Fotoğraf Yükle
         upload = request.files.get("bill_photo")
@@ -737,7 +740,7 @@ async def update_expense(request: Request, group_id: int, expense_id: int) -> HT
             if not mime or mime not in ALLOWED_MIME_TYPES:
                 raise BadRequest("Geçersiz dosya formatı.")
 
-            # Eski fotoğrafı sil
+            # Eski fotoğrafı sil (Hard Delete)
             if expense.bill_photo:
                 try:
                     p = Path("." + expense.bill_photo)
