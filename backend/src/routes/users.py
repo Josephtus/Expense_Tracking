@@ -29,7 +29,7 @@ from src.database import get_session
 from src.models import User
 from src.services.security import hash_password, protected, verify_password
 from src.services.schemas import BaseUserUpdateSchema
-from src.services.common import get_active_user, detect_mime
+from src.services.common import get_active_user, detect_mime, format_datetime
 
 logger = structlog.get_logger(__name__)
 
@@ -111,7 +111,7 @@ def _build_public_profile(user: User) -> dict:
         "age": user.age,
         "role": user.role.value,
         "invite_code": user.invite_code,
-        "created_at": user.created_at.isoformat() if user.created_at else None,
+        "created_at": format_datetime(user.created_at),
     }
 
 

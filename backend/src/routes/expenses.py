@@ -40,7 +40,7 @@ logger = structlog.get_logger(__name__)
 
 expenses_bp = Blueprint("expenses", url_prefix="/api/expenses")
 
-from src.services.common import detect_mime
+from src.services.common import detect_mime, format_datetime
 
 # ── Dosya yükleme sabitleri ────────────────────
 RECEIPT_UPLOAD_DIR = Path("./uploads/receipts")
@@ -146,8 +146,8 @@ def _build_expense(exp: Expense) -> dict:
         "is_settlement": exp.is_settlement,
         "status":        exp.settlement_status.value if exp.settlement_status else None,
         "category":      exp.category,
-        "created_at":    exp.created_at.isoformat() if exp.created_at else None,
-        "updated_at":    exp.updated_at.isoformat() if exp.updated_at else None,
+        "created_at":    format_datetime(exp.created_at),
+        "updated_at":    format_datetime(exp.updated_at),
     }
 
 

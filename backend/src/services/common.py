@@ -56,3 +56,15 @@ def generate_invite_code(length=12):
     import secrets
     chars = string.ascii_uppercase + string.digits
     return "#" + "".join(secrets.choice(chars) for _ in range(length))
+
+
+def format_datetime(dt) -> str | None:
+    """Datetime nesnesini ISO formatına dönüştürür ve timezone yoksa UTC ekler."""
+    if dt is None:
+        return None
+    
+    from datetime import timezone
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    
+    return dt.isoformat()

@@ -23,9 +23,22 @@ interface ExpenseCardProps {
 }
 
 export const ExpenseCard: React.FC<ExpenseCardProps> = ({ expense, onEdit, onDelete, onClick, isOwner }) => {
-  const formattedTime = expense.created_at 
-    ? new Date(expense.created_at).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' }) 
-    : '';
+  // Tarih ve saat formatlama yardımcıları
+  const formatDate = (dateStr: string) => {
+    if (!dateStr) return '';
+    // YYYY-MM-DD formatını korumak için manuel parçalama (Timezone sapmalarını önler)
+    const [year, month, day] = dateStr.split('-');
+    return `${day}.${month}.${year}`;
+  };
+
+  const formatTime = (dateTimeStr: string) => {
+    if (!dateTimeStr) return '';
+    // Backend'den gelen ISO string'i (UTC varsayarak) yerel saate çevir
+    const date = new Date(dateTimeStr + (dateTimeStr.includes('Z') || dateTimeStr.includes('+') ? '' : 'Z'));
+    return date.toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' });
+  };
+
+  const formattedTime = formatTime(expense.created_at);
 
   return (
     <motion.div 
@@ -79,7 +92,7 @@ export const ExpenseCard: React.FC<ExpenseCardProps> = ({ expense, onEdit, onDel
         </div>
         
         <div className="flex items-center gap-2 text-[10px] font-bold text-slate-500">
-          <span>{new Date(expense.date).toLocaleDateString('tr-TR')}</span>
+          <span>{formatDate(expense.date)}</span>
           <span>{formattedTime}</span>
           {expense.content && (
             <span className="truncate text-slate-400 font-medium">— {expense.content}</span>

@@ -41,7 +41,7 @@ from src.models import (
     ReportStatus,
     User,
 )
-from src.services.common import get_active_user, detect_mime
+from src.services.common import get_active_user, detect_mime, format_datetime
 from src.routes.expenses import (
     ALLOWED_MIME_TYPES,
     EXTENSION_TO_MIME,
@@ -93,7 +93,7 @@ def _build_report_response(report: Report) -> dict:
         "aciklama": report.aciklama,
         "category": report.category,
         "status": report.status.value,
-        "created_at": report.created_at.isoformat() if report.created_at else None,
+        "created_at": format_datetime(report.created_at),
     }
     
     # Şikayet eden bilgisi
@@ -119,7 +119,7 @@ def _build_audit_log_response(log: AuditLog) -> dict:
         "admin_id": log.admin_id,
         "process_performed": log.process_performed,
         "content": log.content,
-        "timestamp": log.timestamp.isoformat() if log.timestamp else None,
+        "timestamp": format_datetime(log.timestamp),
     }
 
 
@@ -227,7 +227,7 @@ async def list_users(request: Request) -> HTTPResponse:
                 "phone_number": u.phone_number,
                 "role": u.role.value,
                 "is_active": u.is_active,
-                "created_at": u.created_at.isoformat() if u.created_at else None,
+                "created_at": format_datetime(u.created_at),
                 "joined_groups": joined_groups,
                 "led_groups": led_groups
             })
@@ -428,7 +428,7 @@ async def list_groups(request: Request) -> HTTPResponse:
                 "name": group.name,
                 "content": group.content,
                 "is_approved": group.is_approved,
-                "created_at": group.created_at.isoformat() if group.created_at else None,
+                "created_at": format_datetime(group.created_at),
                 "member_count": member_count
             })
             
@@ -499,9 +499,9 @@ async def get_group_details(request: Request, group_id: int) -> HTTPResponse:
                 "id": m.id,
                 "sender_name": f"{u.name} {u.surname}",
                 "message_text": m.message_text,
-                "timestamp": m.timestamp.isoformat(),
+                "timestamp": format_datetime(m.timestamp),
                 "is_deleted": m.is_deleted,
-                "deleted_at": m.deleted_at.isoformat() if m.deleted_at else None
+                "deleted_at": format_datetime(m.deleted_at)
             })
 
         return sanic_json({

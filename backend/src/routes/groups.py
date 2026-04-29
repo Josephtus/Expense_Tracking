@@ -33,6 +33,7 @@ from sqlalchemy.orm import selectinload
 from src.database import get_session
 from src.models import Group, GroupMember, GroupMemberRole, User, GroupBan, Expense
 from src.services.security import protected, rate_limit
+from src.services.common import format_datetime
 
 logger = structlog.get_logger(__name__)
 
@@ -160,7 +161,7 @@ def _build_group_response(group: Group) -> dict:
         "name": group.name,
         "content": group.content,
         "is_approved": group.is_approved,
-        "created_at": group.created_at.isoformat() if group.created_at else None,
+        "created_at": format_datetime(group.created_at),
         "custom_categories": group.custom_categories,
         "invite_code": group.invite_code,
     }
@@ -174,7 +175,7 @@ def _build_member_response(member: GroupMember) -> dict:
         "role": member.role.value,
         "is_approved": member.is_approved,
         "nickname": member.nickname,
-        "joined_at": member.joined_at.isoformat() if member.joined_at else None,
+        "joined_at": format_datetime(member.joined_at),
     }
 
 
