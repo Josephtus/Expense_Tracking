@@ -179,12 +179,16 @@ async def remove_friend(request: Request, target_user_id: int) -> HTTPResponse:
 @social_bp.get("/friends")
 @protected
 async def list_friends(request: Request) -> HTTPResponse:
-    """Kullanıcının arkadaşlarını listeler."""
+    """Kullanıcının arkadaşlarını listeler (Sayfalamalı ve alfabetik)."""
     user_id: int = int(request.ctx.user["sub"])
+    page = int(request.args.get("page", 1))
+    limit = int(request.args.get("limit", 6))
+    offset = (page - 1) * limit
 
     async with get_session() as session:
-        # Hem gönderen hem alan taraf olabiliriz
-        stmt = select(User).join(
+        from sqlalchemy import func
+        # Base query
+        stmt_base = select(User).join(
             Friendship,
             or_(
                 and_(Friendship.user_id == user_id, Friendship.friend_id == User.id),
@@ -196,8 +200,23 @@ async def list_friends(request: Request) -> HTTPResponse:
             User.deleted_at.is_(None)
         )
 
+        # Count total
+        count_stmt = select(func.count()).select_from(stmt_base.subquery())
+        total_count = await session.scalar(count_stmt) or 0
+
+        # Paged & Sorted query
+        stmt = stmt_base.order_by(User.name.asc(), User.surname.asc()).limit(limit).offset(offset)
         friends = list(await session.scalars(stmt))
-        return sanic_json({"data": [_build_public_user(u, "ACCEPTED") for u in friends]})
+
+        return sanic_json({
+            "data": [_build_public_user(u, "ACCEPTED") for u in friends],
+            "pagination": {
+                "total": total_count,
+                "page": page,
+                "limit": limit,
+                "total_pages": (total_count + limit - 1) // limit
+            }
+        })
 
 
 # =============================================================================
@@ -207,11 +226,16 @@ async def list_friends(request: Request) -> HTTPResponse:
 @social_bp.get("/friend-requests")
 @protected
 async def list_friend_requests(request: Request) -> HTTPResponse:
-    """Kullanıcıya gelen bekleyen arkadaşlık isteklerini listeler."""
+    """Kullanıcıya gelen bekleyen arkadaşlık isteklerini listeler (Sayfalamalı ve alfabetik)."""
     user_id: int = int(request.ctx.user["sub"])
+    page = int(request.args.get("page", 1))
+    limit = int(request.args.get("limit", 6))
+    offset = (page - 1) * limit
 
     async with get_session() as session:
-        stmt = select(User).join(
+        from sqlalchemy import func
+        # Base query
+        stmt_base = select(User).join(
             Friendship,
             and_(Friendship.user_id == User.id, Friendship.friend_id == user_id)
         ).where(
@@ -220,8 +244,23 @@ async def list_friend_requests(request: Request) -> HTTPResponse:
             User.deleted_at.is_(None)
         )
 
+        # Count total
+        count_stmt = select(func.count()).select_from(stmt_base.subquery())
+        total_count = await session.scalar(count_stmt) or 0
+
+        # Paged & Sorted query
+        stmt = stmt_base.order_by(User.name.asc(), User.surname.asc()).limit(limit).offset(offset)
         requests = list(await session.scalars(stmt))
-        return sanic_json({"data": [_build_public_user(u, "PENDING") for u in requests]})
+
+        return sanic_json({
+            "data": [_build_public_user(u, "PENDING") for u in requests],
+            "pagination": {
+                "total": total_count,
+                "page": page,
+                "limit": limit,
+                "total_pages": (total_count + limit - 1) // limit
+            }
+        })
 
 @social_bp.get("/status/<target_user_id:int>")
 @protected

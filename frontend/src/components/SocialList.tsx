@@ -88,27 +88,33 @@ export const SocialList: React.FC = () => {
   if (!currentUserId) return null;
 
   return (
-    <div className="space-y-8 animate-fade-in">
-      <div className="bg-slate-900/40 backdrop-blur-3xl border border-white/5 p-8 rounded-[40px] shadow-2xl">
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-8">
-          <div>
-            <h2 className="text-3xl font-black text-white tracking-tighter">Sosyal Ağ</h2>
-            <p className="text-slate-500 text-xs font-bold uppercase tracking-widest mt-1">Octoqus kullanıcıları ile bağlantı kur</p>
-          </div>
-          <div className="relative w-full max-w-md group">
-            <Search className="absolute left-5 top-1/2 -translate-y-1/2 text-slate-500 group-focus-within:text-[#00f0ff] transition-colors" size={18} />
-            <input 
-              type="text" 
-              placeholder="İsim, e-posta veya #kod ile ara..."
-              className="w-full pl-14 pr-6 py-4 rounded-2xl bg-slate-950/50 border border-white/5 text-white focus:outline-none focus:border-[#00f0ff]/50 transition-all"
-              value={search}
-              onChange={(e) => { setSearch(e.target.value); setPage(1); }}
-            />
+    <div className="animate-fade-in max-w-7xl mx-auto">
+      <div className="bg-slate-900/40 backdrop-blur-3xl border border-white/5 rounded-[32px] shadow-2xl relative overflow-hidden flex flex-col">
+        <div className="absolute top-0 right-0 w-64 h-64 bg-[#00f0ff]/5 blur-3xl rounded-full pointer-events-none" />
+        
+        {/* Header Section */}
+        <div className="p-8 relative z-10 border-b border-white/5">
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-8">
+            <div>
+              <h2 className="text-3xl font-black text-white tracking-tighter">Sosyal Ağ</h2>
+              <p className="text-slate-500 text-xs font-bold uppercase tracking-widest mt-1">Octoqus kullanıcıları ile bağlantı kur</p>
+            </div>
+
+            <div className="relative w-full max-w-md group">
+              <Search className="absolute left-5 top-1/2 -translate-y-1/2 text-slate-500 group-focus-within:text-[#00f0ff] transition-colors" size={18} />
+              <input 
+                type="text" 
+                placeholder="Davet kodu ile ara (Örn: #ABC123XYZ)..."
+                className="w-full pl-14 pr-6 py-4 rounded-2xl bg-slate-950/50 border border-white/5 text-white focus:outline-none focus:border-[#00f0ff]/50 transition-all"
+                value={search}
+                onChange={(e) => { setSearch(e.target.value); setPage(1); }}
+              />
+            </div>
           </div>
         </div>
-      </div>
 
-      <div className="bg-slate-900/40 backdrop-blur-3xl border border-white/5 rounded-[40px] p-6 md:p-10 shadow-2xl min-h-[600px] flex flex-col">
+        {/* Results Section */}
+        <div className="p-6 md:p-8 min-h-[300px] flex flex-col relative z-10">
         {loading && users.length === 0 ? (
           <div className="flex-1 flex justify-center items-center py-20">
             <div className="w-12 h-12 border-4 border-[#00f0ff]/20 border-t-[#00f0ff] rounded-full animate-spin" />
@@ -140,15 +146,9 @@ export const SocialList: React.FC = () => {
                               <div className="w-full h-full flex items-center justify-center text-lg">👤</div>
                             )}
                           </div>
-                          <div>
-                            <div className="flex items-center gap-2">
-                              <h4 className="text-sm font-black text-white tracking-tight">{user.name} {user.surname}</h4>
-                              <span className="text-[9px] text-[#00f0ff] font-bold opacity-60">{user.invite_code}</span>
-                            </div>
-                            <div className="flex items-center gap-2">
-                              <p className="text-slate-500 text-[10px] font-bold uppercase tracking-widest">{user.mail}</p>
-                              {user.age && <span className="text-[9px] text-[#00f0ff] font-black">{user.age} Yaş</span>}
-                            </div>
+                           <div>
+                            <h4 className="text-sm font-black text-white tracking-tight">{user.name} {user.surname}</h4>
+                            <p className="text-slate-500 text-[10px] font-bold uppercase tracking-widest">{user.mail}</p>
                           </div>
                         </div>
 
@@ -189,7 +189,7 @@ export const SocialList: React.FC = () => {
                               onClick={() => handleFriendAction(user.id, 'request')}
                               className="px-6 py-2.5 rounded-xl font-black text-[10px] uppercase tracking-widest transition-all flex items-center gap-2 bg-[#00f0ff] text-slate-950 shadow-lg shadow-[#00f0ff]/20 hover:scale-105"
                             >
-                              <UserPlus size={14} /> İstek Gönder
+                              <UserPlus size={14} /> Arkadaş Ekle
                             </button>
                           )}
                         </div>
@@ -224,8 +224,9 @@ export const SocialList: React.FC = () => {
           </div>
         )}
       </div>
+    </div>
 
-      <AnimatePresence>
+    <AnimatePresence>
         {selectedUser && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
             <motion.div 
@@ -272,12 +273,6 @@ export const SocialList: React.FC = () => {
                     <Mail size={12} className="text-[#00f0ff]" />
                     {selectedUser.mail}
                   </div>
-                  {selectedUser.age && (
-                    <div className="flex items-center gap-2 text-slate-400 text-xs font-bold uppercase tracking-widest bg-white/5 px-4 py-2 rounded-full border border-white/5">
-                      <Calendar size={12} className="text-[#00f0ff]" />
-                      {selectedUser.age} Yaşında
-                    </div>
-                  )}
                 </div>
 
                 <div className="w-full">
@@ -317,7 +312,7 @@ export const SocialList: React.FC = () => {
                       onClick={() => handleFriendAction(selectedUser.id, 'request')}
                       className="w-full py-5 rounded-2xl font-black text-xs uppercase tracking-widest transition-all flex items-center justify-center gap-3 bg-[#00f0ff] text-slate-950 shadow-xl shadow-[#00f0ff]/20 hover:scale-[1.02] active:scale-95"
                     >
-                      <UserPlus size={18} /> İstek Gönder
+                      <UserPlus size={18} /> Arkadaş Ekle
                     </button>
                   )}
                 </div>

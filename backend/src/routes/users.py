@@ -106,6 +106,7 @@ def _build_public_profile(user: User) -> dict:
         "id": user.id,
         "name": user.name,
         "surname": user.surname,
+        "mail": user.mail,
         "profile_photo": user.profile_photo,
         "age": user.age,
         "role": user.role.value,
@@ -525,12 +526,7 @@ async def search_users(request: Request) -> HTTPResponse:
         
         # Base query
         stmt = select(User).where(
-            or_(
-                User.name.ilike(f"%{query}%"),
-                User.surname.ilike(f"%{query}%"),
-                User.mail.ilike(f"%{query}%"),
-                User.invite_code == query if query.startswith("#") else User.invite_code == f"#{query}"
-            ),
+            User.invite_code == (query if query.startswith("#") else f"#{query}"),
             User.is_active.is_(True),
             User.deleted_at.is_(None)
         )

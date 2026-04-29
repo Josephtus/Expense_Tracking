@@ -21,6 +21,7 @@ export const ProfileSettings: React.FC<ProfileSettingsProps> = ({ onUpdate }) =>
   const [socialPage, setSocialPage] = useState(1);
   const [socialTotalCount, setSocialTotalCount] = useState(0);
   const [selectedProfile, setSelectedProfile] = useState<any>(null);
+  const [confirmModal, setConfirmModal] = useState<{show: boolean, userId: number | null, name: string}>({ show: false, userId: null, name: '' });
   const socialLimit = 6;
   
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -69,12 +70,13 @@ export const ProfileSettings: React.FC<ProfileSettingsProps> = ({ onUpdate }) =>
     if (!user) return;
     setSocialLoading(true);
     try {
-      const endpoint = tab === 'friends' ? '/social/friends' : '/social/friend-requests';
+      const endpoint = tab === 'friends' 
+        ? `/social/friends?page=${pageNum}&limit=${socialLimit}` 
+        : `/social/friend-requests?page=${pageNum}&limit=${socialLimit}`;
       const res = await apiFetch(endpoint);
       const data = await res.json();
       setSocialData(data.data || []);
-      // Pagination might not be implemented in backend for these yet, but we'll set it anyway
-      setSocialTotalCount(data.total_count || data.data?.length || 0);
+      setSocialTotalCount(data.pagination?.total || data.data?.length || 0);
     } catch (err) {
       console.error(`${tab} listesi yüklenemedi:`, err);
     } finally {
@@ -185,24 +187,28 @@ export const ProfileSettings: React.FC<ProfileSettingsProps> = ({ onUpdate }) =>
     }
   };
 
-  const handleFriendAction = async (targetId: number, action: 'accept' | 'decline' | 'remove') => {
+  const handleFriendAction = async (targetId: number, action: 'request' | 'accept' | 'decline' | 'remove') => {
+    if (action === 'remove' && !confirmModal.show) {
+      const friend = socialData.find(f => f.id === targetId);
+      setConfirmModal({ show: true, userId: targetId, name: friend ? `${friend.name} ${friend.surname}` : 'Bu kişi' });
+      return;
+    }
+
     try {
       let endpoint = '';
-      let method = 'POST';
-
-      if (action === 'accept') endpoint = `/social/accept-request/${targetId}`;
+      if (action === 'request') endpoint = `/social/friend-request/${targetId}`;
+      else if (action === 'accept') endpoint = `/social/accept-request/${targetId}`;
       else if (action === 'decline') endpoint = `/social/decline-request/${targetId}`;
-      else if (action === 'remove') {
-        endpoint = `/social/remove-friend/${targetId}`;
-        method = 'DELETE';
-      }
+      else if (action === 'remove') endpoint = `/social/remove-friend/${targetId}`;
 
-      const res = await apiFetch(endpoint, { method });
-      if (res.ok) {
-        setSocialData(prev => prev.filter(u => u.id !== targetId));
-      }
-    } catch (err) {
-      alert("İşlem başarısız.");
+      const res = await apiFetch(endpoint, { method: 'POST' });
+      if (!res.ok) throw new Error("İşlem başarısız.");
+      
+      setConfirmModal({ show: false, userId: null, name: '' });
+      fetchSocialList(activeTab, socialPage);
+      if (selectedProfile) setSelectedProfile(null);
+    } catch (err: any) {
+      alert(err.message);
     }
   };
 
@@ -253,7 +259,7 @@ export const ProfileSettings: React.FC<ProfileSettingsProps> = ({ onUpdate }) =>
               </div>
             </div>
             {user?.role !== 'ADMIN' && (
-              <p className="text-white font-black text-lg mb-1">{user?.invite_code}</p>
+              <p className="text-slate-400 font-medium italic mb-1">{user?.invite_code}</p>
             )}
             <p className="text-slate-400 font-medium mb-1">{user?.mail}</p>
             <p className="text-slate-500 text-xs font-bold uppercase tracking-widest mb-6">Kayıt Tarihi: {new Date(user?.created_at).toLocaleDateString('tr-TR')}</p>
@@ -462,17 +468,17 @@ export const ProfileSettings: React.FC<ProfileSettingsProps> = ({ onUpdate }) =>
                     initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: idx * 0.05 }}
                     className="flex items-center justify-between p-4 bg-white/5 border border-white/5 rounded-2xl hover:bg-white/10 transition-all group"
                   >
-                    <div className="flex items-center gap-4 cursor-pointer" onClick={() => setSelectedProfile(item)}>
-                      <div className="w-12 h-12 rounded-xl bg-slate-800 overflow-hidden border border-white/10">
+                    <div className="flex items-center gap-4 cursor-pointer min-w-0" onClick={() => setSelectedProfile(item)}>
+                      <div className="w-12 h-12 rounded-xl bg-slate-800 overflow-hidden border border-white/10 shrink-0">
                         {item.profile_photo ? (
                           <img src={getImageUrl(item.profile_photo) || ''} alt={item.name} className="w-full h-full object-cover" />
                         ) : (
                           <div className="w-full h-full flex items-center justify-center text-lg">👤</div>
                         )}
                       </div>
-                      <div>
-                        <h4 className="text-sm font-black text-white tracking-tight">{item.name} {item.surname}</h4>
-                        <p className="text-slate-500 text-[9px] font-bold uppercase tracking-widest">{item.mail}</p>
+                      <div className="min-w-0 overflow-hidden">
+                        <h4 className="text-sm font-black text-white tracking-tight truncate">{item.name} {item.surname}</h4>
+                        <p className="text-slate-500 text-[9px] font-bold uppercase tracking-widest truncate">{item.mail}</p>
                       </div>
                     </div>
 
@@ -571,6 +577,44 @@ export const ProfileSettings: React.FC<ProfileSettingsProps> = ({ onUpdate }) =>
                   className="w-full py-5 bg-white text-slate-950 rounded-2xl font-black text-xs uppercase tracking-widest hover:bg-[#00f0ff] transition-all"
                 >
                   Kapat
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+      {/* Confirmation Modal */}
+      <AnimatePresence>
+        {confirmModal.show && (
+          <div className="fixed inset-0 z-[110] flex items-center justify-center p-4">
+            <motion.div 
+              initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+              onClick={() => setConfirmModal({ show: false, userId: null, name: '' })}
+              className="absolute inset-0 bg-slate-950/80 backdrop-blur-md"
+            />
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.9, y: 20 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.9, y: 20 }}
+              className="relative w-full max-w-sm bg-slate-900 border border-white/10 p-8 rounded-[32px] shadow-2xl text-center"
+            >
+              <div className="w-20 h-20 bg-red-500/10 text-red-500 rounded-3xl flex items-center justify-center mx-auto mb-6">
+                <Trash2 size={40} />
+              </div>
+              <h3 className="text-2xl font-black text-white mb-3 tracking-tight">Emin misiniz?</h3>
+              <p className="text-slate-400 text-sm mb-8">
+                <span className="text-white font-bold">{confirmModal.name}</span> isimli kullanıcıyı arkadaş listenizden çıkarmak istediğinize emin misiniz?
+              </p>
+              <div className="grid grid-cols-2 gap-4">
+                <button 
+                  onClick={() => setConfirmModal({ show: false, userId: null, name: '' })}
+                  className="py-4 bg-white/5 text-white border border-white/10 rounded-2xl font-black text-xs uppercase tracking-widest hover:bg-white/10 transition-all"
+                >
+                  VAZGEÇ
+                </button>
+                <button 
+                  onClick={() => handleFriendAction(confirmModal.userId!, 'remove')}
+                  className="py-4 bg-red-500 text-white rounded-2xl font-black text-xs uppercase tracking-widest hover:bg-red-600 transition-all shadow-xl shadow-red-500/20"
+                >
+                  EVET, ÇIKAR
                 </button>
               </div>
             </motion.div>
