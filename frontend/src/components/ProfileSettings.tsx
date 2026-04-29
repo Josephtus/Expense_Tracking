@@ -201,7 +201,8 @@ export const ProfileSettings: React.FC<ProfileSettingsProps> = ({ onUpdate }) =>
       else if (action === 'decline') endpoint = `/social/decline-request/${targetId}`;
       else if (action === 'remove') endpoint = `/social/remove-friend/${targetId}`;
 
-      const res = await apiFetch(endpoint, { method: 'POST' });
+      const method = action === 'remove' ? 'DELETE' : 'POST';
+      const res = await apiFetch(endpoint, { method });
       if (!res.ok) throw new Error("İşlem başarısız.");
       
       setConfirmModal({ show: false, userId: null, name: '' });
