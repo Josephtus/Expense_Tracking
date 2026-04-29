@@ -58,6 +58,13 @@ export const Dashboard: React.FC = () => {
   const [isNicknameModalOpen, setIsNicknameModalOpen] = useState(false);
   const [newNickname, setNewNickname] = useState('');
 
+  // Admin Redirection
+  useEffect(() => {
+    if (user?.role?.toLowerCase() === 'admin' && location.pathname === '/dashboard') {
+      navigate('/dashboard/admin');
+    }
+  }, [user, location.pathname, navigate]);
+
   useEffect(() => {
     if (activeGroup) {
       apiFetch(`/groups/${activeGroup.id}/access`, { method: 'POST' }).catch(err => console.error(err));
@@ -102,16 +109,20 @@ export const Dashboard: React.FC = () => {
     }
   };
 
-  const navTabs: { id: TabType; path: string; icon: any; label: string }[] = [
-    { id: 'Ana Sayfa', path: '/dashboard', icon: LayoutDashboard, label: 'Panel' },
-    { id: 'Gruplar', path: '/dashboard/groups', icon: Users, label: 'Gruplar' },
-    { id: 'Sosyal', path: '/dashboard/social', icon: Share2, label: 'Sosyal' },
-    { id: 'Profil', path: '/dashboard/profile', icon: UserCircle, label: 'Profil' },
-    { id: 'Şikayet', path: '/dashboard/support', icon: Flag, label: 'Destek' },
-  ];
-  
+  let navTabs: { id: TabType; path: string; icon: any; label: string }[] = [];
+
   if (user?.role?.toLowerCase() === 'admin') {
-    navTabs.unshift({ id: 'Admin', path: '/dashboard/admin', icon: ShieldAlert, label: 'Yönetim' });
+    navTabs = [
+      { id: 'Admin', path: '/dashboard/admin', icon: ShieldAlert, label: 'Yönetim' }
+    ];
+  } else {
+    navTabs = [
+      { id: 'Ana Sayfa', path: '/dashboard', icon: LayoutDashboard, label: 'Panel' },
+      { id: 'Gruplar', path: '/dashboard/groups', icon: Users, label: 'Gruplar' },
+      { id: 'Sosyal', path: '/dashboard/social', icon: Share2, label: 'Sosyal' },
+      { id: 'Profil', path: '/dashboard/profile', icon: UserCircle, label: 'Profil' },
+      { id: 'Şikayet', path: '/dashboard/support', icon: Flag, label: 'Destek' },
+    ];
   }
 
   const handleTabClick = (tab: typeof navTabs[0]) => {
@@ -190,9 +201,11 @@ export const Dashboard: React.FC = () => {
                 <LogOut size={18} />
               </button>
               
-              <button onClick={() => setIsSidebarOpen(!isSidebarOpen)} className="md:hidden p-2.5 rounded-xl bg-white/5 text-white">
-                {isSidebarOpen ? <X size={20} /> : <Menu size={20} />}
-              </button>
+              {navTabs.length > 1 && (
+                <button onClick={() => setIsSidebarOpen(!isSidebarOpen)} className="md:hidden p-2.5 rounded-xl bg-white/5 text-white">
+                  {isSidebarOpen ? <X size={20} /> : <Menu size={20} />}
+                </button>
+              )}
             </div>
           </div>
         </div>
