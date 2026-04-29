@@ -15,6 +15,7 @@ Endpoints:
 from datetime import date, datetime, timezone
 from pathlib import Path
 from uuid import uuid4
+from zoneinfo import ZoneInfo
 
 import aiofiles
 import structlog
@@ -463,12 +464,17 @@ async def export_expenses(request: Request, group_id: int) -> HTTPResponse:
             raise BadRequest("Dışa aktarılacak harcama bulunamadı.")
             
         data = []
+        tr_tz = ZoneInfo("Europe/Istanbul")
         for e in expenses:
+            # UTC'den Türkiye saatine çevir
+            created_local = e.created_at.astimezone(tr_tz) if e.created_at else None
+            updated_local = e.updated_at.astimezone(tr_tz) if e.updated_at else None
+            
             data.append({
                 "Ekleyen": f"{e.added_by_user.name} {e.added_by_user.surname}" if e.added_by_user else "Bilinmiyor",
                 "Tarih": e.date.isoformat() if e.date else "-",
-                "Saat": e.created_at.strftime("%H:%M:%S") if e.created_at else "-",
-                "Son Güncelleme": e.updated_at.strftime("%Y-%m-%d %H:%M:%S") if e.updated_at else "-",
+                "Saat": created_local.strftime("%H:%M:%S") if created_local else "-",
+                "Son Güncelleme": updated_local.strftime("%Y-%m-%d %H:%M:%S") if updated_local else "-",
                 "Miktar (TL)": float(e.amount),
                 "Kategori": e.category or "-",
                 "Açıklama": e.content or "-",
