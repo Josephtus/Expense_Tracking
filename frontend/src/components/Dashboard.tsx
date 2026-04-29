@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useNavigate, useLocation, Outlet } from 'react-router-dom';
 import { apiFetch, getImageUrl } from '../utils/api';
@@ -57,6 +57,12 @@ export const Dashboard: React.FC = () => {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isNicknameModalOpen, setIsNicknameModalOpen] = useState(false);
   const [newNickname, setNewNickname] = useState('');
+
+  useEffect(() => {
+    if (activeGroup) {
+      apiFetch(`/groups/${activeGroup.id}/access`, { method: 'POST' }).catch(err => console.error(err));
+    }
+  }, [activeGroup?.id]);
 
   const handleLeaveGroup = async () => {
     if (!activeGroup) return;
@@ -246,7 +252,9 @@ export const Dashboard: React.FC = () => {
                   <div className="flex flex-col md:flex-row md:items-center justify-between gap-8 relative z-10">
                     <div className="flex items-center gap-6">
                       <button 
-                        onClick={() => { setActiveGroup(null); }}
+                        onClick={() => { 
+                          setActiveGroup(null); 
+                        }}
                         className="w-12 h-12 rounded-full bg-white/5 border border-white/10 flex items-center justify-center hover:bg-white/10 transition-all group"
                       >
                         <ChevronRight size={20} className="rotate-180 group-hover:-translate-x-0.5 transition-transform" />
@@ -256,6 +264,22 @@ export const Dashboard: React.FC = () => {
                           <span className={`px-2 py-0.5 rounded-md text-[9px] font-black uppercase tracking-widest ${activeGroup.role?.toUpperCase() === 'GROUP_LEADER' ? 'bg-amber-500 text-black' : 'bg-[#00f0ff] text-black'}`}>
                             {activeGroup.role?.toUpperCase() === 'GROUP_LEADER' ? 'Lider' : 'Üye'}
                           </span>
+                          <button 
+                            onClick={async () => {
+                              try {
+                                const res = await apiFetch(`/groups/${activeGroup.id}/star`, { method: 'POST' });
+                                if (res.ok) {
+                                  const data = await res.json();
+                                  setActiveGroup({ ...activeGroup, is_starred: data.is_starred });
+                                  triggerRefresh();
+                                }
+                              } catch (err) { console.error(err); }
+                            }}
+                            className={`p-1 rounded-lg transition-all ${activeGroup.is_starred ? 'text-amber-500' : 'text-slate-500 hover:text-amber-500'}`}
+                            title="Yıldızla"
+                          >
+                            <span className="text-sm">{activeGroup.is_starred ? '★' : '☆'}</span>
+                          </button>
                           {!activeGroup.isApproved && (
                             <span className="px-2 py-0.5 rounded-md text-[9px] font-black uppercase tracking-widest bg-orange-500/20 text-orange-500 border border-orange-500/30 animate-pulse">
                               Onay Bekliyor

@@ -272,6 +272,19 @@ class GroupMember(Base):
         default=False,
         comment="Grup lideri onaylayana kadar False. True ise üye aktif kabul edilir.",
     )
+    is_starred: Mapped[bool] = mapped_column(
+        Boolean,
+        nullable=False,
+        default=False,
+        comment="Kullanıcının bu grubu yıldızlayıp yıldızlamadığı"
+    )
+    last_accessed_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime,
+        nullable=True,
+        server_default=func.now(),
+        onupdate=func.now(),
+        comment="Kullanıcının gruba en son ne zaman girdiği"
+    )
 
     # ── İlişkiler ───────────────────────────────────────────────────────────
     user: Mapped["User"] = relationship("User", back_populates="group_memberships")

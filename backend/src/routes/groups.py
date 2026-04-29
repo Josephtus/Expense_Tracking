@@ -224,7 +224,7 @@ async def _get_membership(session, group_id: int, user_id: int) -> GroupMember |
 
 @groups_bp.post("/")
 @protected
-@rate_limit(limit=3, window=3600, key_prefix="group_create")  # Saatte en fazla 3 grup
+@rate_limit(limit=20, window=3600, key_prefix="group_create")  # Saatte en fazla 20 grup
 async def create_group(request: Request) -> HTTPResponse:
     """
     Yeni grup oluşturur.
@@ -368,6 +368,8 @@ async def list_groups(request: Request) -> HTTPResponse:
             g_dict["role"] = membership.role.value
             g_dict["is_approved"] = membership.is_approved
             g_dict["nickname"] = membership.nickname
+            g_dict["is_starred"] = membership.is_starred
+            g_dict["last_accessed_at"] = format_datetime(membership.last_accessed_at)
             data_list.append(g_dict)
 
         return sanic_json(
@@ -377,6 +379,38 @@ async def list_groups(request: Request) -> HTTPResponse:
             },
             status=200,
         )
+
+
+@groups_bp.post("/<group_id:int>/star")
+@protected
+async def toggle_star_group(request: Request, group_id: int) -> HTTPResponse:
+    """Grubu yıldızlar veya yıldızı kaldırır."""
+    user_id: int = int(request.ctx.user["sub"])
+    async with get_session() as session:
+        membership = await _get_membership(session, group_id, user_id)
+        if not membership or not membership.is_approved:
+            raise Forbidden("Bu grup için yıldızlama yapamazsınız.")
+        
+        membership.is_starred = not membership.is_starred
+        await session.commit()
+        
+        return sanic_json({
+            "message": "Yıldız durumu güncellendi.",
+            "is_starred": membership.is_starred
+        })
+
+
+@groups_bp.post("/<group_id:int>/access")
+@protected
+async def update_group_access(request: Request, group_id: int) -> HTTPResponse:
+    """Grup son erişim zamanını günceller."""
+    user_id: int = int(request.ctx.user["sub"])
+    async with get_session() as session:
+        membership = await _get_membership(session, group_id, user_id)
+        if membership:
+            membership.last_accessed_at = func.now()
+            await session.commit()
+        return sanic_json({"message": "Erişim zamanı güncellendi."})
 
 
 

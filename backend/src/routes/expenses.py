@@ -390,6 +390,45 @@ async def get_my_spending_summary(request: Request) -> HTTPResponse:
         })
 
 
+@expenses_bp.get("/summary/groups")
+@protected
+@openapi.summary("Gruplara göre harcama özeti")
+@openapi.description("Kullanıcının harcamalarını gruplara göre özetler.")
+async def get_group_spending_summary(request: Request) -> HTTPResponse:
+    user_id = int(request.ctx.user["sub"])
+    
+    async with get_session() as session:
+        # Harcamaları gruplara göre topla
+        stmt = (
+            select(Group.name, func.sum(Expense.amount).label("total"))
+            .join(Expense, Expense.group_id == Group.id)
+            .where(
+                Expense.added_by == user_id,
+                Expense.is_deleted.is_(False),
+                Expense.is_settlement.is_(False)
+            )
+            .group_by(Group.name)
+        )
+        result = await session.execute(stmt)
+        rows = result.all()
+        
+        summary_data = []
+        total_spending = 0.0
+        
+        for row in rows:
+            group_total = float(row.total or 0)
+            summary_data.append({
+                "group_name": row.name,
+                "total": group_total
+            })
+            total_spending += group_total
+            
+        return sanic_json({
+            "total_spending": total_spending,
+            "summary": sorted(summary_data, key=lambda x: x["total"], reverse=True)
+        })
+
+
 @expenses_bp.get("/<group_id:int>/export")
 @protected
 @openapi.summary("Harcamaları dışa aktar")

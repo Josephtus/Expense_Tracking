@@ -177,7 +177,7 @@ def _build_user_response(user: User) -> dict:
 # =============================================================================
 
 @auth_bp.post("/register")
-@rate_limit(limit=5, window=60, key_prefix="rl_auth")
+@rate_limit(limit=30, window=60, key_prefix="rl_auth")
 @openapi.summary("Yeni kullanıcı kaydı")
 @openapi.description("Sistemde yeni bir kullanıcı hesabı oluşturur. E-posta ve telefon numarası benzersiz olmalıdır.")
 @openapi.body({"application/json": RegisterRequest})
@@ -277,7 +277,7 @@ async def register(request: Request) -> HTTPResponse:
 # =============================================================================
 
 @auth_bp.post("/login")
-@rate_limit(limit=10, window=60, key_prefix="rl_auth")
+@rate_limit(limit=100, window=60, key_prefix="rl_auth")
 @openapi.summary("Kullanıcı girişi")
 @openapi.description("E-posta ve şifre ile giriş yaparak JWT access token alır.")
 @openapi.body({"application/json": LoginRequest})
