@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { apiFetch, getImageUrl } from '../utils/api';
-import { Search, UserPlus, UserMinus, X, Calendar, Mail, User as UserIcon } from 'lucide-react';
+import { Search, UserPlus, UserMinus, X, Mail, User as UserIcon } from 'lucide-react';
 import { Pagination } from './common/Pagination';
 import { useAuthStore } from '../store/authStore';
 

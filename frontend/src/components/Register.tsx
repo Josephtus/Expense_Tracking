@@ -5,7 +5,7 @@ import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { apiFetch } from '../utils/api';
 import { registerSchema, type RegisterFormData } from '../utils/validations';
-import { User, Mail, Lock, Phone, Calendar, ArrowLeft, ChevronRight, AlertCircle, Sparkles, Eye, EyeOff } from 'lucide-react';
+import { User, Mail, Lock, ArrowLeft, ChevronRight, AlertCircle, Sparkles, Eye, EyeOff } from 'lucide-react';
 import { PhoneInput } from './common/PhoneInput';
 import { DatePicker } from './common/DatePicker';
 

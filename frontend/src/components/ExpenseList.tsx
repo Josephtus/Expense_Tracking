@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { apiFetch } from '../utils/api';
+import { apiFetch, getImageUrl } from '../utils/api';
 import { ExpenseCard } from './ExpenseCard';
 import { ExpenseDetailModal } from './ExpenseDetailModal';
 import { UserProfileModal } from './UserProfileModal';
@@ -373,7 +373,7 @@ export const ExpenseList: React.FC = () => {
                     <div className="flex items-center justify-between bg-slate-950 border border-slate-800 p-3 rounded-xl">
                       <div className="flex items-center gap-3">
                         <div className="w-10 h-10 bg-slate-800 rounded-lg overflow-hidden border border-slate-700">
-                          <img src={editingExpense.bill_photo.startsWith('http') ? editingExpense.bill_photo : `http://localhost:8000${editingExpense.bill_photo}`} alt="Mevcut Fatura" className="w-full h-full object-cover" />
+                          <img src={getImageUrl(editingExpense.bill_photo) || ''} alt="Mevcut Fatura" className="w-full h-full object-cover" />
                         </div>
                         <span className="text-[10px] font-bold text-slate-400 uppercase">Kayıtlı Fatura</span>
                       </div>

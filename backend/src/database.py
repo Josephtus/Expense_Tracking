@@ -89,40 +89,31 @@ async def init_db() -> None:
         # 2. Manuel Migrationlar (Opsiyonel/Hızlı Kontroller)
         # Sadece kolonlar yoksa ekle
         from sqlalchemy import text
+        import logging as _logging
+        _migration_logger = _logging.getLogger("octoqus.migration")
         
         # Mevcut kolonları kontrol et (MySQL için)
         async def column_exists(table, column):
             res = await conn.execute(text(f"SHOW COLUMNS FROM `{table}` LIKE '{column}'"))
             return res.fetchone() is not None
 
+        async def safe_add_column(table, column, definition):
+            """Kolonu güvenli şekilde ekler, zaten varsa atlar."""
+            if not await column_exists(table, column):
+                try:
+                    await conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {column} {definition}"))
+                    _migration_logger.info(f"Migration: {table}.{column} eklendi")
+                except Exception as exc:
+                    _migration_logger.warning(f"Migration: {table}.{column} eklenemedi: {exc}")
+
         # Sadece eksik kolonları ekle
-        if not await column_exists("reports", "category"):
-            try: await conn.execute(text("ALTER TABLE reports ADD COLUMN category VARCHAR(50) NOT NULL DEFAULT 'GENEL'"))
-            except: pass
-
-        if not await column_exists("expenses", "is_settlement"):
-            try: await conn.execute(text("ALTER TABLE expenses ADD COLUMN is_settlement BOOLEAN NOT NULL DEFAULT FALSE"))
-            except: pass
-
-        if not await column_exists("expenses", "recipient_id"):
-            try: await conn.execute(text("ALTER TABLE expenses ADD COLUMN recipient_id INTEGER REFERENCES users(id)"))
-            except: pass
-
-        if not await column_exists("expenses", "category"):
-            try: await conn.execute(text("ALTER TABLE expenses ADD COLUMN category VARCHAR(100) NULL"))
-            except: pass
-
-        if not await column_exists("groups", "custom_categories"):
-            try: await conn.execute(text("ALTER TABLE groups ADD COLUMN custom_categories TEXT NULL"))
-            except: pass
-
-        if not await column_exists("group_members", "is_starred"):
-            try: await conn.execute(text("ALTER TABLE group_members ADD COLUMN is_starred BOOLEAN NOT NULL DEFAULT FALSE"))
-            except: pass
-
-        if not await column_exists("group_members", "last_accessed_at"):
-            try: await conn.execute(text("ALTER TABLE group_members ADD COLUMN last_accessed_at DATETIME NULL"))
-            except: pass
+        await safe_add_column("reports", "category", "VARCHAR(50) NOT NULL DEFAULT 'GENEL'")
+        await safe_add_column("expenses", "is_settlement", "BOOLEAN NOT NULL DEFAULT FALSE")
+        await safe_add_column("expenses", "recipient_id", "INTEGER REFERENCES users(id)")
+        await safe_add_column("expenses", "category", "VARCHAR(100) NULL")
+        await safe_add_column("groups", "custom_categories", "TEXT NULL")
+        await safe_add_column("group_members", "is_starred", "BOOLEAN NOT NULL DEFAULT FALSE")
+        await safe_add_column("group_members", "last_accessed_at", "DATETIME NULL")
 
 
 async def dispose_engine() -> None:

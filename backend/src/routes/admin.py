@@ -159,12 +159,14 @@ async def list_users(request: Request) -> HTTPResponse:
         # Toplam sayıyı al
         count_stmt = select(func.count(User.id)).where(User.deleted_at.is_(None))
         if search_query:
+            # Wildcard karakterlerini escape et
+            safe_query = search_query.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
             count_stmt = count_stmt.where(
                 or_(
-                    User.name.ilike(f"%{search_query}%"),
-                    User.surname.ilike(f"%{search_query}%"),
-                    User.mail.ilike(f"%{search_query}%"),
-                    User.phone_number.ilike(f"%{search_query}%")
+                    User.name.ilike(f"%{safe_query}%", escape="\\"),
+                    User.surname.ilike(f"%{safe_query}%", escape="\\"),
+                    User.mail.ilike(f"%{safe_query}%", escape="\\"),
+                    User.phone_number.ilike(f"%{safe_query}%", escape="\\")
                 )
             )
         total_count = await session.scalar(count_stmt) or 0
@@ -179,12 +181,14 @@ async def list_users(request: Request) -> HTTPResponse:
         )
 
         if search_query:
+            # Burada safe_query zaten yukarıda hesaplanmış olabilir ama tekrar oluşturabiliriz.
+            safe_query = search_query.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
             stmt = stmt.where(
                 or_(
-                    User.name.ilike(f"%{search_query}%"),
-                    User.surname.ilike(f"%{search_query}%"),
-                    User.mail.ilike(f"%{search_query}%"),
-                    User.phone_number.ilike(f"%{search_query}%")
+                    User.name.ilike(f"%{safe_query}%", escape="\\"),
+                    User.surname.ilike(f"%{safe_query}%", escape="\\"),
+                    User.mail.ilike(f"%{safe_query}%", escape="\\"),
+                    User.phone_number.ilike(f"%{safe_query}%", escape="\\")
                 )
             )
 

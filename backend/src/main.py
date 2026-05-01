@@ -66,16 +66,16 @@ async def add_content_disposition(request, response):
 app.config.update(
     {
         "DEBUG": os.getenv("SANIC_DEBUG", "false").lower() == "true",
-        "OAS": True,                    # OpenAPI Spec (sanic-ext) — AKTİF EDİLDİ
-        "OAS_UI_SWAGGER": True,         # /docs üzerinden Swagger UI
-        "OAS_UI_REDOC": True,           # /redoc üzerinden Redoc UI
-        "OAS_URL_PREFIX": "/api/docs",  # Dokümantasyon URL'i
+        "OAS": os.getenv("SANIC_DEBUG", "false").lower() == "true",  # Swagger UI yalnızca debug modda aktif
+        "OAS_UI_SWAGGER": True,
+        "OAS_UI_REDOC": True,
+        "OAS_URL_PREFIX": "/api/docs",
         "OAS_TITLE": "Octoqus API Documentation",
         "OAS_VERSION": "1.0.0",
         "OAS_DESCRIPTION": "Octoqus Gider Takip ve Sosyal Finans Platformu API Dokümantasyonu.",
-        "CORS_ORIGINS": "*",            # Görev 5'te kısıtlanacak
-        "CORS_ALLOW_HEADERS": "Authorization, Content-Type, *",
-        "CORS_METHODS": "*",
+        "CORS_ORIGINS": os.getenv("CORS_ORIGINS", "https://octoqus.com,https://www.octoqus.com"),
+        "CORS_ALLOW_HEADERS": "Authorization, Content-Type, Accept, Origin, X-Requested-With",
+        "CORS_METHODS": "GET, POST, PUT, PATCH, DELETE, OPTIONS",
         "KEEP_ALIVE_TIMEOUT": 30,
         "REQUEST_TIMEOUT": 60,
         "RESPONSE_TIMEOUT": 60,
@@ -260,9 +260,17 @@ async def log_request(request: Request) -> None:
 @app.middleware("response")
 async def handle_cors_and_log_response(request: Request, response: HTTPResponse) -> HTTPResponse:
     """Giden her HTTP yanıtına CORS başlıklarını ekler ve loglar."""
-    # CORS Başlıklarını zorla ekle
-    origin = request.headers.get("Origin", "*")
-    response.headers["Access-Control-Allow-Origin"] = origin
+    # CORS: İzin verilen origin'leri kontrol et
+    allowed_origins_str = os.getenv("CORS_ORIGINS", "https://octoqus.com,https://www.octoqus.com")
+    allowed_origins = [o.strip() for o in allowed_origins_str.split(",")]
+    origin = request.headers.get("Origin", "")
+
+    if origin in allowed_origins or "*" in allowed_origins:
+        response.headers["Access-Control-Allow-Origin"] = origin
+    elif os.getenv("SANIC_DEBUG", "false").lower() == "true":
+        # Development modda tüm origin'lere izin ver
+        response.headers["Access-Control-Allow-Origin"] = origin or "*"
+
     response.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, PATCH, DELETE, OPTIONS"
     response.headers["Access-Control-Allow-Headers"] = "Authorization, Content-Type, Accept, Origin, X-Requested-With"
     response.headers["Access-Control-Allow-Credentials"] = "true"

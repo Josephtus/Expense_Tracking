@@ -6,6 +6,7 @@ interface ActiveGroup {
   role: string | null;
   isApproved: boolean;
   nickname?: string | null;
+  is_starred?: boolean;
 }
 
 interface GroupState {

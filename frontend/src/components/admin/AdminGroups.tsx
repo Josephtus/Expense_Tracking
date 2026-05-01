@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { apiFetch } from '../../utils/api';
 import { Pagination } from '../common/Pagination';
-import { Users, Trash2, Search, CheckCircle2, XCircle, Hash, Copy, Check, Calendar, MessageSquare, Receipt, Clock } from 'lucide-react';
+import { Users, Trash2, Search, CheckCircle2, Hash, Copy, Check, Calendar, MessageSquare, Receipt, Clock } from 'lucide-react';
 
 interface SortHeaderProps {
   label: string;

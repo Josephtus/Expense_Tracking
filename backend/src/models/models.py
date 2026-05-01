@@ -15,6 +15,7 @@ Tasarım Kararları:
 import enum
 from datetime import date, datetime, timezone
 from typing import List, Optional
+from decimal import Decimal
 
 from sqlalchemy import (
     BigInteger,
@@ -29,6 +30,7 @@ from sqlalchemy import (
     String,
     Table,
     Text,
+    Numeric,
     UniqueConstraint,
     Column,
     func,
@@ -324,8 +326,8 @@ class Expense(Base):
     )
 
     # Harcama bilgileri
-    amount: Mapped[float] = mapped_column(
-        nullable=False, comment="Harcama tutarı (TL cinsinden)"
+    amount: Mapped[Decimal] = mapped_column(
+        Numeric(12, 2), nullable=False, comment="Harcama tutarı (TL cinsinden)"
     )
     content: Mapped[Optional[str]] = mapped_column(
         Text, nullable=True, comment="Harcama açıklaması"

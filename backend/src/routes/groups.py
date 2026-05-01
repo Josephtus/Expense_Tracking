@@ -883,7 +883,7 @@ async def delete_custom_category(request: Request, group_id: int) -> HTTPRespons
         # Mevcut kategorileri al
         try:
             custom_cats = json.loads(group.custom_categories) if group.custom_categories else []
-        except:
+        except (json.JSONDecodeError, TypeError, ValueError):
             custom_cats = []
 
         # Kategoriyi listeden çıkar

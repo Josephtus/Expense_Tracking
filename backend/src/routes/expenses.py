@@ -33,7 +33,8 @@ from src.models import Expense, Group, GroupMember, User, GroupMemberRole, Settl
 from src.services.cash_flow import calculate_optimized_debts
 from src.services.security import protected
 
-import pandas as pd
+
+
 from fpdf import FPDF
 from io import BytesIO
 
@@ -722,7 +723,7 @@ async def update_expense(request: Request, group_id: int, expense_id: int) -> HT
                 try:
                     p = Path("." + expense.bill_photo)
                     if p.exists(): p.unlink()
-                except: pass
+                except Exception: pass
                 expense.bill_photo = None
                 updated_fields["bill_photo"] = None
                 
@@ -751,7 +752,7 @@ async def update_expense(request: Request, group_id: int, expense_id: int) -> HT
                 try:
                     p = Path("." + expense.bill_photo)
                     if p.exists(): p.unlink()
-                except: pass
+                except Exception: pass
 
             expense.bill_photo = await _save_receipt(body, name)
             updated_fields["bill_photo"] = expense.bill_photo

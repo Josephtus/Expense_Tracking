@@ -208,7 +208,9 @@ export const ProfileSettings: React.FC<ProfileSettingsProps> = ({ onUpdate }) =>
       if (!res.ok) throw new Error("İşlem başarısız.");
       
       setConfirmModal({ show: false, userId: null, name: '' });
-      fetchSocialList(activeTab, socialPage);
+      if (activeTab !== 'settings') {
+        fetchSocialList(activeTab, socialPage);
+      }
       if (selectedProfile) setSelectedProfile(null);
     } catch (err: any) {
       alert(err.message);
@@ -359,7 +361,6 @@ export const ProfileSettings: React.FC<ProfileSettingsProps> = ({ onUpdate }) =>
                           value={value}
                           onChange={onChange}
                           error={profileErrors.birthday?.message}
-                          showToday={false}
                         />
                       )}
                     />
@@ -451,8 +452,8 @@ export const ProfileSettings: React.FC<ProfileSettingsProps> = ({ onUpdate }) =>
           >
             <div className="flex items-center justify-between mb-10">
               <div className="flex items-center gap-4">
-                <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${activeTab === 'following' ? 'bg-[#00f0ff]/10 text-[#00f0ff]' : 'bg-[#b026ff]/10 text-[#b026ff]'}`}>
-                  {activeTab === 'following' ? <Users size={20} /> : <User size={20} />}
+                <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${activeTab === 'friends' ? 'bg-[#00f0ff]/10 text-[#00f0ff]' : 'bg-[#b026ff]/10 text-[#b026ff]'}`}>
+                  {activeTab === 'friends' ? <Users size={20} /> : <User size={20} />}
                 </div>
                 <div>
                   <h3 className="text-xl font-black text-white tracking-tight">

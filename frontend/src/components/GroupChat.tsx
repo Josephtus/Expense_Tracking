@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useRef } from 'react';
-import { apiFetch } from '../utils/api';
+import { apiFetch, getWsUrl } from '../utils/api';
 import { useAuthStore } from '../store/authStore';
 import { useGroupStore } from '../store/groupStore';
 
@@ -59,10 +59,8 @@ export const GroupChat: React.FC = () => {
     const token = localStorage.getItem('token');
     if (!token) return;
 
-    // Use current location host but change protocol and port if needed
-    // However, since BASE_URL is localhost:8000, we stick to it for now
-    // but in a more robust way
-    const wsUrl = `ws://localhost:8000/api/messages/ws/${groupId}?token=${token}`;
+    // Production'da wss://, development'da ws:// kullanır
+    const wsUrl = getWsUrl(`/api/messages/ws/${groupId}?token=${token}`);
     const ws = new WebSocket(wsUrl);
     wsRef.current = ws;
 

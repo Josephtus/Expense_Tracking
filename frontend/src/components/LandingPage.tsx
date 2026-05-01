@@ -1,7 +1,7 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, useScroll, useTransform } from 'framer-motion';
-import { Wallet, Users, BarChart3, ArrowRight, CheckCircle2, TrendingUp, PieChart, Bell } from 'lucide-react';
+import { Wallet, Users, BarChart3, ArrowRight, CheckCircle2, TrendingUp } from 'lucide-react';
 
 export const LandingPage: React.FC = () => {
   const navigate = useNavigate();
@@ -21,18 +21,18 @@ export const LandingPage: React.FC = () => {
     },
   };
 
-  const itemVariants = {
+  const itemVariants: any = {
     hidden: { y: 30, opacity: 0, filter: "blur(10px)" },
     visible: {
       y: 0,
       opacity: 1,
       filter: "blur(0px)",
-      transition: { duration: 1, ease: [0.16, 1, 0.3, 1] as any },
+      transition: { duration: 1, ease: [0.16, 1, 0.3, 1] },
     },
   };
 
   // Mobile optimization for blur filter
-  const mobileItemVariants = {
+  const mobileItemVariants: any = {
     hidden: { y: 20, opacity: 0 },
     visible: {
       y: 0,

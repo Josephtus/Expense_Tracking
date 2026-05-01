@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ChevronDown, Search, Check } from 'lucide-react';
+import { ChevronDown, Check } from 'lucide-react';
 
 interface Country {
   code: string;
@@ -26,7 +26,7 @@ interface PhoneInputProps {
   className?: string;
 }
 
-export const PhoneInput: React.FC<PhoneInputProps> = ({ value, onChange, error, className }) => {
+export const PhoneInput: React.FC<PhoneInputProps> = ({ onChange, error, className }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [selectedCountry, setSelectedCountry] = useState(COUNTRIES[0]);
   const [displayValue, setDisplayValue] = useState('');
